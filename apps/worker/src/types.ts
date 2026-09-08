@@ -12,6 +12,10 @@ export type Env = Omit<Cloudflare.Env, "SETUP_ENABLED" | "RENEWLET_MAINTENANCE_M
   SETUP_ENABLED?: string;
   RENEWLET_MAINTENANCE_MODE?: string;
   SESSION_TTL_DAYS?: string;
+  // Worker secrets, absent unless configured; the renewal sender degrades instead of throwing.
+  WHATSAPP_TOKEN?: string;
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+  WHATSAPP_API_BASE_URL?: string;
   RENEWLET_VERSION?: string;
   RENEWLET_COMMIT?: string;
   RENEWLET_BUILD_TIME?: string;

@@ -2,10 +2,11 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertSendableRenewalEvent } from "./notification-renewal-webhook";
 import { renewalReminderFor } from "./renewal-reminders";
-import { listRenewalReminderFailures, loadSentWindows, planRenewalReminders, recordRenewalReminderFailure, recordRenewalReminderSent } from "./renewal-reminder-store";
+import { runRenewalRemindersForUser } from "./renewal-reminder-run";
+import { listRenewalReminderFailures, loadConsumedWindows, planRenewalReminders, recordRenewalReminderFailure, recordRenewalReminderSent } from "./renewal-reminder-store";
 import type { Env, SubscriptionRow } from "./types";
 
 const USER_ID = "usr_owner";
@@ -102,7 +103,7 @@ describe("renewal reminder send records", () => {
 
   it("reads nothing and touches no query when there are no subscriptions", async () => {
     const { env } = openDatabase();
-    expect(await loadSentWindows(env, USER_ID, [])).toEqual(new Set());
+    expect(await loadConsumedWindows(env, USER_ID, [])).toEqual(new Set());
   });
 
   it("records a failure without swallowing the warning it failed to deliver", async () => {
@@ -204,3 +205,103 @@ class SqliteD1PreparedStatement {
     return { meta: { changes: Number(result.changes) } };
   }
 }
+
+const TOKEN = "EAAG-super-secret-token-value";
+
+function whatsappEnv(env: Env): Env {
+  return {
+    ...env,
+    WHATSAPP_TOKEN: TOKEN,
+    WHATSAPP_PHONE_NUMBER_ID: "123456789",
+    WHATSAPP_API_BASE_URL: "https://graph.example.test/v23.0",
+  } as Env;
+}
+
+const SETTINGS = { renewalWebhookUrl: "", testPhone: "34600000000" };
+
+describe("renewal reminders end to end through the WhatsApp sender", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("records a delivery as sent, and a second pass sends nothing", async () => {
+    const { db, env } = openDatabase();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 }));
+
+    const first = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-15", [annual()], "en-US");
+    expect(first).toEqual({ sent: 1, failed: 0 });
+    expect(db.prepare("SELECT status, attempts FROM subscription_reminder_sends").get()).toEqual({ status: "sent", attempts: 1 });
+
+    const second = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-16", [annual()], "en-US");
+    expect(second).toEqual({ sent: 0, failed: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a 4xx as failed, keeps the token out of last_error, and stops retrying", async () => {
+    const { db, env } = openDatabase();
+    fetchMock.mockResolvedValue(new Response(
+      JSON.stringify({ error: { message: `Bad request - please check your parameters (token ${TOKEN})` } }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    ));
+
+    const result = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-15", [annual()], "en-US");
+    expect(result).toEqual({ sent: 0, failed: 1 });
+
+    const row = db.prepare("SELECT status, attempts, last_error, sent_at FROM subscription_reminder_sends").get() as {
+      status: string; attempts: number; last_error: string; sent_at: string | null;
+    };
+    expect(row.status).toBe("failed");
+    expect(row.sent_at).toBeNull();
+    expect(row.last_error).toContain("400");
+    expect(row.last_error).not.toContain(TOKEN);
+    // A refused request repeated unchanged cannot succeed, so the window stops being retried.
+    expect(row.attempts).toBe(3);
+    const retry = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-16", [annual()], "en-US");
+    expect(retry).toEqual({ sent: 0, failed: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a 5xx retryable on the next pass", async () => {
+    const { db, env } = openDatabase();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: { message: "upstream unavailable" } }), { status: 503 }));
+
+    await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-15", [annual()], "en-US");
+    expect(db.prepare("SELECT status, attempts FROM subscription_reminder_sends").get()).toEqual({ status: "failed", attempts: 1 });
+
+    // An outage delays the warning; it does not cancel it.
+    await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-16", [annual()], "en-US");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(db.prepare("SELECT attempts FROM subscription_reminder_sends").get()).toEqual({ attempts: 2 });
+  });
+
+  it("sends nothing at all when neither output is configured", async () => {
+    const { db, env } = openDatabase();
+    const result = await runRenewalRemindersForUser(env, USER_ID, { renewalWebhookUrl: "", testPhone: "" }, "2026-09-15", [annual()], "en-US");
+
+    expect(result).toEqual({ sent: 0, failed: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // No window may be consumed by a message nobody received.
+    expect(db.prepare("SELECT COUNT(*) AS total FROM subscription_reminder_sends").get()).toEqual({ total: 0 });
+  });
+
+  it("routes the annual subscription to the annual template", async () => {
+    const { env } = openDatabase();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 }));
+
+    await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-15", [annual()], "en-US");
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      template: { name: string; language: { code: string } };
+    };
+    expect(body.template.name).toBe("renewlet_renovacion_anual");
+    expect(body.template.language.code).toBe("es");
+  });
+});
+

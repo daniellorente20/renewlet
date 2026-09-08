@@ -1,8 +1,12 @@
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
-import { sendRenewalWebhook } from "./notification-renewal-webhook";
+import { isPermanentRenewalSendFailure, metaWhatsAppConfig, sendMetaWhatsApp } from "./notification-meta-whatsapp";
+import { sendRenewalWebhook, type RenewalUpcomingEvent } from "./notification-renewal-webhook";
 import { planRenewalReminders, recordRenewalReminderFailure, recordRenewalReminderSent } from "./renewal-reminder-store";
 import type { Env, SubscriptionRow } from "./types";
 import type { AppLocale } from "./http";
+
+type RenewalSettings = Pick<ApiAppSettings, "renewalWebhookUrl" | "testPhone">;
+type RenewalDelivery = (event: RenewalUpcomingEvent) => Promise<void>;
 
 /**
  * Runs the per-subscription renewal event for one user.
@@ -14,18 +18,19 @@ import type { AppLocale } from "./http";
 export async function runRenewalRemindersForUser(
   env: Env,
   userId: string,
-  settings: Pick<ApiAppSettings, "renewalWebhookUrl">,
+  settings: RenewalSettings,
   localDate: string,
   rows: SubscriptionRow[],
   locale: AppLocale,
 ): Promise<{ sent: number; failed: number }> {
-  if (!settings.renewalWebhookUrl.trim()) return { sent: 0, failed: 0 };
+  const deliver = selectRenewalDelivery(env, settings, locale);
+  if (!deliver) return { sent: 0, failed: 0 };
   const decisions = await planRenewalReminders(env, userId, localDate, rows);
   let sent = 0;
   let failed = 0;
   for (const decision of decisions) {
     try {
-      await sendRenewalWebhook(settings, decision.event, locale);
+      await deliver(decision.event);
       // Recorded only after the endpoint accepted it, so a failed send is retried on the next run
       // instead of being silently consumed.
       await recordRenewalReminderSent(env, userId, decision);
@@ -33,15 +38,33 @@ export async function runRenewalRemindersForUser(
     } catch (error) {
       failed += 1;
       // Persist the outcome before logging: wrangler tail is not somewhere failures get noticed.
-      await recordRenewalReminderFailure(env, userId, decision, error);
+      await recordRenewalReminderFailure(env, userId, decision, error, isPermanentRenewalSendFailure(error));
       console.error("renewal_reminder_failed", {
         event: "renewal_reminder_failed",
         userId,
         subscriptionId: decision.subscriptionId,
         reminderWindow: decision.firedWindow,
+        permanent: isPermanentRenewalSendFailure(error),
         error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
       });
     }
   }
   return { sent, failed };
+}
+
+/**
+ * One output at a time, whichever is configured, WhatsApp first.
+ *
+ * Two live outputs would mean one dedup record standing for two deliveries that can disagree, so
+ * that stays out until it is actually wanted.
+ */
+export function selectRenewalDelivery(
+  env: Env,
+  settings: RenewalSettings,
+  locale: AppLocale,
+): RenewalDelivery | null {
+  const whatsapp = metaWhatsAppConfig(env);
+  if (whatsapp) return (event) => sendMetaWhatsApp(whatsapp, settings, event, locale);
+  if (settings.renewalWebhookUrl.trim()) return (event) => sendRenewalWebhook(settings, event, locale);
+  return null;
 }
