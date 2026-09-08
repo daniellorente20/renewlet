@@ -186,6 +186,11 @@ export interface SubscriptionRow {
   cost_sharing_collection_reminder_enabled: number;
   cost_sharing_next_collection_reminder_date: string | null;
   extra_json: string;
+  // Amount charged before the last price change; NULL until price or currency actually change.
+  previous_price: string | null;
+  previous_price_currency: string | null;
+  // When that change happened, so a price rise stops counting once its cycle has rolled over.
+  previous_price_changed_at: string | null;
   created_at: string;
   updated_at: string;
 }

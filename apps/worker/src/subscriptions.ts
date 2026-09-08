@@ -67,8 +67,9 @@ export async function createSubscription(request: Request, env: Env): Promise<Re
       category, status, pinned, public_hidden, payment_method,
       start_date, next_billing_date, auto_renew, auto_calculate_next_billing_date, trial_end_date, website, notes, tags_json,
       reminder_days, repeat_reminder_enabled, repeat_reminder_interval, repeat_reminder_window, cost_sharing_json,
-      cost_sharing_collection_reminder_enabled, cost_sharing_next_collection_reminder_date, extra_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cost_sharing_collection_reminder_enabled, cost_sharing_next_collection_reminder_date, extra_json,
+      previous_price, previous_price_currency, previous_price_changed_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(...subscriptionRowValues(row));
   const derived = subscriptionDerivedMutationPlan(env, { before: null, after: row, kind: "create" }, settings);
   await env.DB.batch([...derived.beforeFact, factStatement, ...derived.afterFact]);
@@ -86,7 +87,7 @@ export async function updateSubscription(request: Request, env: Env, id: string)
   const settings = await getSettings(env, auth.user.id);
   // Worker 没有 PocketBase hook 可二次归一；切换计费类型时先清理互斥字段，再合并 patch 走同一套 create schema。
   const mergedBody = parseSubscriptionBodyForStorage(mergeSubscriptionPatchForStorage(toBody(existing), stripUndefined(patch)), locale);
-  const merged = toSubscriptionRow(existing.id, auth.user.id, mergedBody, existing.created_at, timestamp, { settings });
+  const merged = withPreviousPriceCapture(existing, toSubscriptionRow(existing.id, auth.user.id, mergedBody, existing.created_at, timestamp, { settings }), timestamp);
   const factStatement = env.DB.prepare(`
     UPDATE subscriptions SET
       name = ?, logo = ?, price = ?, currency = ?, billing_cycle = ?, custom_days = ?, custom_cycle_unit = ?,
@@ -94,7 +95,8 @@ export async function updateSubscription(request: Request, env: Env, id: string)
       pinned = ?, public_hidden = ?, payment_method = ?, start_date = ?, next_billing_date = ?, auto_renew = ?, auto_calculate_next_billing_date = ?,
       trial_end_date = ?, website = ?, notes = ?, tags_json = ?, reminder_days = ?, repeat_reminder_enabled = ?,
       repeat_reminder_interval = ?, repeat_reminder_window = ?, cost_sharing_json = ?,
-      cost_sharing_collection_reminder_enabled = ?, cost_sharing_next_collection_reminder_date = ?, extra_json = ?, updated_at = ?
+      cost_sharing_collection_reminder_enabled = ?, cost_sharing_next_collection_reminder_date = ?, extra_json = ?,
+      previous_price = ?, previous_price_currency = ?, previous_price_changed_at = ?, updated_at = ?
     WHERE user_id = ? AND id = ?
   `).bind(
     merged.name,
@@ -127,6 +129,9 @@ export async function updateSubscription(request: Request, env: Env, id: string)
     merged.cost_sharing_collection_reminder_enabled,
     merged.cost_sharing_next_collection_reminder_date,
     merged.extra_json,
+    merged.previous_price,
+    merged.previous_price_currency,
+    merged.previous_price_changed_at,
     timestamp,
     auth.user.id,
     id,
@@ -163,11 +168,14 @@ export async function renewSubscription(request: Request, env: Env, id: string):
 
   const timestamp = nowIso();
   // Worker 没有 PocketBase hook；续订也必须先收敛成完整写入 body，才能重新执行 costSharing/date 镜像规则。
-  const merged = renewSubscriptionRow(existing, body, result, timestamp, settings, today, locale);
+  // Manual renew is the other door the price can change through, and the one where a new cycle
+  // price is most likely to be entered, so it captures the previous amount exactly like an edit.
+  const merged = withPreviousPriceCapture(existing, renewSubscriptionRow(existing, body, result, timestamp, settings, today, locale), timestamp);
   const factStatement = env.DB.prepare(`
     UPDATE subscriptions SET
       price = ?, currency = ?, start_date = ?, next_billing_date = ?, auto_calculate_next_billing_date = ?,
-      cost_sharing_collection_reminder_enabled = ?, cost_sharing_next_collection_reminder_date = ?, status = ?, updated_at = ?
+      cost_sharing_collection_reminder_enabled = ?, cost_sharing_next_collection_reminder_date = ?, status = ?,
+      previous_price = ?, previous_price_currency = ?, previous_price_changed_at = ?, updated_at = ?
     WHERE user_id = ? AND id = ?
   `).bind(
     merged.price,
@@ -178,6 +186,9 @@ export async function renewSubscription(request: Request, env: Env, id: string):
     merged.cost_sharing_collection_reminder_enabled,
     merged.cost_sharing_next_collection_reminder_date,
     merged.status,
+    merged.previous_price,
+    merged.previous_price_currency,
+    merged.previous_price_changed_at,
     timestamp,
     auth.user.id,
     id,
@@ -353,8 +364,38 @@ export function toSubscriptionRow(
     cost_sharing_next_collection_reminder_date: costSharingMirror.nextReminderDate,
     // extra 不走 UI 展示；它给 seed/import 留稳定幂等键，编辑订阅时必须随原记录保留。
     extra_json: JSON.stringify(body.extra ?? {}),
+    // A fresh row has no prior cycle to compare against; updates re-apply the real value through
+    // withPreviousPriceCapture, which is the only place allowed to move these two columns.
+    previous_price: null,
+    previous_price_currency: null,
+    previous_price_changed_at: null,
     created_at: createdAt,
     updated_at: updatedAt,
+  };
+}
+
+/**
+ * Carries the amount charged before a price change into previous_price.
+ *
+ * Only an actual change to price or currency moves these columns. Renaming a subscription or
+ * editing any other field must leave them untouched, otherwise price_note would report
+ * "igual que el ciclo anterior" for a cycle whose price really did change earlier.
+ */
+export function withPreviousPriceCapture(before: SubscriptionRow, after: SubscriptionRow, changedAt: string): SubscriptionRow {
+  const priceChanged = before.price !== after.price || before.currency !== after.currency;
+  if (!priceChanged) {
+    return {
+      ...after,
+      previous_price: before.previous_price,
+      previous_price_currency: before.previous_price_currency,
+      previous_price_changed_at: before.previous_price_changed_at,
+    };
+  }
+  return {
+    ...after,
+    previous_price: before.price,
+    previous_price_currency: before.currency,
+    previous_price_changed_at: changedAt,
   };
 }
 

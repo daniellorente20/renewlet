@@ -90,6 +90,25 @@ export function moneyMax(left: MoneyString | number | null | undefined, right: M
   return compareMoney(left, right) >= 0 ? moneyUnitsToString(parseMoneyUnitsFromUnknown(left)) : moneyUnitsToString(parseMoneyUnitsFromUnknown(right));
 }
 
+/**
+ * Renders an amount as a single-line display string with the currency code inside, e.g. "239,88 EUR".
+ *
+ * Outbound message templates cannot carry newlines or run their own decimal formatting, so the
+ * amount has to arrive already formatted and always with two decimals: "199,00 EUR", never "199 EUR".
+ * Non-breaking spaces some locales insert are collapsed to plain spaces for the same reason.
+ */
+export function formatMoneyWithCurrency(
+  value: MoneyString | number | null | undefined,
+  currency: string,
+  locale: string,
+): string {
+  const amount = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(moneyToNumber(value));
+  return `${amount} ${currency.trim()}`.replace(/\s+/g, " ").trim();
+}
+
 function parseMoneyUnitsFromUnknown(value: MoneyString | number | null | undefined): bigint {
   if (typeof value === "number") return parseMoneyUnits(moneyFromNumber(value));
   if (typeof value === "string") return parseMoneyUnits(canonicalizeMoneyString(value) ?? "0");

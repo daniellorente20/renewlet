@@ -5,6 +5,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  assertPost0035SubscriptionShape,
   CALENDAR_FEED_0035_BACKUP_TABLE,
   prepareCalendarFeedsFor0035,
   restoreCalendarFeedsAfter0035,
@@ -426,4 +427,48 @@ test("blocks an unrecorded mixed post-0035 subscriptions schema", async () => {
   } finally {
     client.db.close();
   }
+});
+
+// The 0035 column shape, kept here so the test fails if the production constant is edited by hand.
+const shape0035 = [
+  "id", "user_id", "name", "logo", "price", "currency", "billing_cycle", "custom_days", "custom_cycle_unit",
+  "one_time_term_count", "one_time_term_unit", "category", "status", "pinned", "public_hidden", "payment_method",
+  "start_date", "next_billing_date", "auto_renew", "auto_calculate_next_billing_date", "trial_end_date", "website",
+  "notes", "tags_json", "reminder_days", "repeat_reminder_enabled", "repeat_reminder_interval",
+  "repeat_reminder_window", "cost_sharing_json", "cost_sharing_collection_reminder_enabled",
+  "cost_sharing_next_collection_reminder_date", "extra_json", "created_at", "updated_at",
+] as const;
+
+test("post-0035 subscriptions shape accepts a database that has not reached the newest migration", () => {
+  // This assertion runs before the pending migrations, so every point between 0035 and the newest
+  // column is a legitimate state. Pinning it to exact shapes breaks the deploy that ships the next
+  // migration to add a column.
+  assert.doesNotThrow(() => assertPost0035SubscriptionShape([...shape0035]));
+  assert.doesNotThrow(() => assertPost0035SubscriptionShape([...shape0035, "previous_price"]));
+  assert.doesNotThrow(() => assertPost0035SubscriptionShape([...shape0035, "previous_price", "previous_price_currency"]));
+  assert.doesNotThrow(() => assertPost0035SubscriptionShape([
+    ...shape0035, "previous_price", "previous_price_currency", "previous_price_changed_at",
+  ]));
+});
+
+test("post-0035 subscriptions shape still refuses columns it does not know", () => {
+  assert.throws(
+    () => assertPost0035SubscriptionShape([...shape0035, "invented_column"]),
+    /schema after 0035 is invalid or mixed/,
+  );
+  // A known column in the wrong position is a reordered table, not a partially migrated one.
+  assert.throws(
+    () => assertPost0035SubscriptionShape([...shape0035, "previous_price_currency", "previous_price"]),
+    /schema after 0035 is invalid or mixed/,
+  );
+  // A gap in the middle of the appended run means the table skipped a column.
+  assert.throws(
+    () => assertPost0035SubscriptionShape([...shape0035, "previous_price", "previous_price_changed_at"]),
+    /schema after 0035 is invalid or mixed/,
+  );
+  // An unknown column before the appended run is still a mixed table.
+  assert.throws(
+    () => assertPost0035SubscriptionShape([...shape0035.slice(0, -1), "invented_column", "updated_at"]),
+    /schema after 0035 is invalid or mixed/,
+  );
 });

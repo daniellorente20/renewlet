@@ -50,6 +50,7 @@ describe("Cloudflare D1 subscription migrations", () => {
       });
 
       applyMigration(db, "0035_rebuild_cost_sharing_collection_reminder_schema.sql");
+      applyMigration(db, "0041_subscription_previous_price.sql");
 
       expect(subscriptionColumnNames(db)).toEqual(expect.arrayContaining([
         "cost_sharing_collection_reminder_enabled",
@@ -81,6 +82,7 @@ describe("Cloudflare D1 subscription migrations", () => {
       applyMigration(db, "0034_cost_sharing_collection_reminders.sql");
 
       applyMigration(db, "0035_rebuild_cost_sharing_collection_reminder_schema.sql");
+      applyMigration(db, "0041_subscription_previous_price.sql");
 
       expect(subscriptionColumnNames(db)).toEqual(expect.arrayContaining([
         "cost_sharing_collection_reminder_enabled",
@@ -274,6 +276,7 @@ describe("Cloudflare D1 subscription migrations", () => {
       db.prepare("UPDATE subscriptions SET next_billing_date = ? WHERE id = ?").run("2999-09-01", "sub_migrated");
       applyMigration(db, "0034_cost_sharing_collection_reminders.sql");
       applyMigration(db, "0035_rebuild_cost_sharing_collection_reminder_schema.sql");
+      applyMigration(db, "0041_subscription_previous_price.sql");
       applyMigration(db, "0036_subscription_derived_state_v2.sql");
       insertSubscriptionClone(db, { id: "sub_pinned_active", name: "Pinned Active", pinned: 1, status: "active" });
       insertSubscriptionClone(db, { id: "sub_pinned_inactive", name: "Pinned Inactive", pinned: 1, status: "cancelled" });

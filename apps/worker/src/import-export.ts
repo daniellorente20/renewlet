@@ -20,7 +20,7 @@ import { getSettings, listSubscriptions, newId, nowIso, parseJsonObject, toApiSu
 import { requestLocale, readJsonWithLimitAndSize, HttpError, successJson, type AppLocale } from "./http";
 import { serverText } from "./server-i18n";
 import { requireAuth } from "./auth";
-import { buildCostSharingCollectionReminderMirrorStatements, normalizeSubscriptionBodyForStorage, toSubscriptionRow, type SubscriptionBody } from "./subscriptions";
+import { buildCostSharingCollectionReminderMirrorStatements, normalizeSubscriptionBodyForStorage, toSubscriptionRow, withPreviousPriceCapture, type SubscriptionBody } from "./subscriptions";
 import { subscriptionDerivedBulkMutationPlan, type SubscriptionDerivedMutation } from "./subscription-derived-state";
 import { buildSubscriptionSchedulerRefreshStatements } from "./subscription-scheduler-state";
 import { exchangeRateSnapshotUpsertStatement } from "./exchange-rate-snapshots";
@@ -106,7 +106,9 @@ async function applyImportRequest(request: Request, env: Env, metrics: { bodyByt
       { settings: finalSettingsForMirrors },
     );
     if (existingRow) {
-      subscriptionMutations.push({ before: existingRow, after: row, kind: "update" });
+      // A replace that carries a different price is still a price change; without this the import
+      // would reset previous_price to NULL and price_note would silently fall back to "sin datos".
+      subscriptionMutations.push({ before: existingRow, after: withPreviousPriceCapture(existingRow, row, timestamp), kind: "update" });
     } else {
       subscriptionMutations.push({ before: null, after: row, kind: "create" });
     }

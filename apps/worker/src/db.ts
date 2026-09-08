@@ -74,6 +74,9 @@ export const SUBSCRIPTION_COLUMN_NAMES = [
   "cost_sharing_collection_reminder_enabled",
   "cost_sharing_next_collection_reminder_date",
   "extra_json",
+  "previous_price",
+  "previous_price_currency",
+  "previous_price_changed_at",
   "created_at",
   "updated_at",
 ] as const;

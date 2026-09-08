@@ -24,6 +24,17 @@ const subscriptionColumns0035 = [
   "repeat_reminder_window", "cost_sharing_json", "cost_sharing_collection_reminder_enabled",
   "cost_sharing_next_collection_reminder_date", "extra_json", "created_at", "updated_at",
 ] as const;
+/**
+ * Columns appended to subscriptions after 0035, in the order the migrations add them.
+ *
+ * Append here whenever a migration adds a column. Kept apart from subscriptionColumns0035 on
+ * purpose: that constant is the historical fingerprint used to spot a database carrying the 0035
+ * shape without its migration record, and widening it would blind that check.
+ */
+const subscriptionColumnsAppendedAfter0035 = [
+  // 0041
+  "previous_price", "previous_price_currency", "previous_price_changed_at",
+] as const;
 const pre0035AllowedExtraColumns = new Set([
   ...subscriptionColumns0035,
   "cost_sharing_collection_reminder_enabled",
@@ -387,8 +398,20 @@ async function hasSubscriptionMigrationTempTable(client: D1Client): Promise<bool
   return results.some(Boolean);
 }
 
-function assertPost0035SubscriptionShape(columns: readonly string[]): void {
-  if (!sameOrderedValues(columns, subscriptionColumns0035)) {
+/**
+ * Accepts the 0035 shape followed by any prefix of the columns appended since.
+ *
+ * This runs before the pending migrations are applied, so the table is legitimately somewhere
+ * between the 0035 shape and the newest one, and pinning it to specific shapes means the next
+ * migration that adds a column breaks the deploy that ships it. A prefix still names every column
+ * it accepts, so an unknown column, a reordered one or a gap is refused exactly as before.
+ */
+export function assertPost0035SubscriptionShape(columns: readonly string[]): void {
+  const base = columns.slice(0, subscriptionColumns0035.length);
+  const appended = columns.slice(subscriptionColumns0035.length);
+  const isKnownPrefix = appended.length <= subscriptionColumnsAppendedAfter0035.length
+    && appended.every((column, index) => column === subscriptionColumnsAppendedAfter0035[index]);
+  if (!sameOrderedValues(base, subscriptionColumns0035) || !isKnownPrefix) {
     throw new Error("Cloudflare subscriptions schema after 0035 is invalid or mixed; refusing automatic recovery");
   }
 }

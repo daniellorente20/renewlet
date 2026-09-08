@@ -74,7 +74,7 @@
     "test:scripts": "node --test scripts/*.test.mjs && node --import tsx --test scripts/*.test.ts",
     "test:unit": "pnpm test:scripts && pnpm --filter @renewlet/shared test:run && pnpm --filter @renewlet/cloudflare test:run && pnpm --filter @renewlet/client test:run && pnpm --filter @renewlet/website test:run && pnpm --filter @renewlet/server test",
     "test:perf": "pnpm --filter @renewlet/shared test:perf && pnpm --filter @renewlet/cloudflare test:perf && pnpm --filter @renewlet/client test:perf && pnpm --filter @renewlet/server test:perf",
-    "test:run": "pnpm --filter @renewlet/client test:run && pnpm --filter @renewlet/server test",
+    "test:run": "pnpm test:unit",
     "test:e2e": "pnpm typecheck:e2e && playwright test",
     "test:e2e:cloudflare": "node scripts/run-cloudflare-check.mjs",
     "test:e2e:cloudflare:headed": "node scripts/run-cloudflare-check.mjs --headed",

@@ -133,6 +133,9 @@ const appSettingsShape = {
   webhookMethod: z.enum(["GET", "POST"]),
   webhookHeaders: z.string().max(20_000),
   webhookPayload: z.string().max(100_000),
+  // 续订事件走独立回调：每个订阅一条 POST，与上面共享 title/content 的汇总 webhook 契约不同，
+  // 两者必须能分别配置，否则改动其中一个会静默改变另一个的下游消费方。
+  renewalWebhookUrl: optionalHttpsUrlSchema,
   dingtalkWebhookUrl: optionalHttpsUrlSchema,
   dingtalkSecret: z.string().trim().max(512),
   dingtalkKeyword: z.string().trim().max(100),
@@ -193,6 +196,7 @@ export const SETTINGS_SECRET_KEYS = [
   "notifyxApiKey",
   "webhookUrl",
   "webhookHeaders",
+  "renewalWebhookUrl",
   "dingtalkWebhookUrl",
   "dingtalkSecret",
   "wechatWebhookUrl",
@@ -211,6 +215,7 @@ const topLevelSecretOmissions = {
   notifyxApiKey: true,
   webhookUrl: true,
   webhookHeaders: true,
+  renewalWebhookUrl: true,
   dingtalkWebhookUrl: true,
   dingtalkSecret: true,
   wechatWebhookUrl: true,
@@ -232,6 +237,7 @@ const secretUpdatesShape = {
   notifyxApiKey: secretMutationSchema.optional(),
   webhookUrl: secretMutationSchema.optional(),
   webhookHeaders: secretMutationSchema.optional(),
+  renewalWebhookUrl: secretMutationSchema.optional(),
   dingtalkWebhookUrl: secretMutationSchema.optional(),
   dingtalkSecret: secretMutationSchema.optional(),
   wechatWebhookUrl: secretMutationSchema.optional(),
@@ -288,6 +294,7 @@ export function toPublicAppSettings(settings: ApiAppSettings): PublicAppSettings
     notifyxApiKey: _notifyxApiKey,
     webhookUrl: _webhookUrl,
     webhookHeaders: _webhookHeaders,
+    renewalWebhookUrl: _renewalWebhookUrl,
     dingtalkWebhookUrl: _dingtalkWebhookUrl,
     dingtalkSecret: _dingtalkSecret,
     wechatWebhookUrl: _wechatWebhookUrl,
@@ -313,6 +320,7 @@ export function toEditableAppSettings(settings: PublicAppSettings): ApiAppSettin
     notifyxApiKey: "",
     webhookUrl: "",
     webhookHeaders: "",
+    renewalWebhookUrl: "",
     dingtalkWebhookUrl: "",
     dingtalkSecret: "",
     wechatWebhookUrl: "",
@@ -331,6 +339,7 @@ export function appSettingsSecretStatus(settings: ApiAppSettings): SettingsSecre
     notifyxApiKey: { configured: settings.notifyxApiKey.trim().length > 0 },
     webhookUrl: { configured: settings.webhookUrl.trim().length > 0 },
     webhookHeaders: { configured: settings.webhookHeaders.trim().length > 0 },
+    renewalWebhookUrl: { configured: settings.renewalWebhookUrl.trim().length > 0 },
     dingtalkWebhookUrl: { configured: settings.dingtalkWebhookUrl.trim().length > 0 },
     dingtalkSecret: { configured: settings.dingtalkSecret.trim().length > 0 },
     wechatWebhookUrl: { configured: settings.wechatWebhookUrl.trim().length > 0 },
@@ -354,6 +363,7 @@ export function applySettingsSecretUpdates(settings: ApiAppSettings, updates: Se
   next.notifyxApiKey = valueFor("notifyxApiKey", next.notifyxApiKey);
   next.webhookUrl = valueFor("webhookUrl", next.webhookUrl);
   next.webhookHeaders = valueFor("webhookHeaders", next.webhookHeaders);
+  next.renewalWebhookUrl = valueFor("renewalWebhookUrl", next.renewalWebhookUrl);
   next.dingtalkWebhookUrl = valueFor("dingtalkWebhookUrl", next.dingtalkWebhookUrl);
   next.dingtalkSecret = valueFor("dingtalkSecret", next.dingtalkSecret);
   next.wechatWebhookUrl = valueFor("wechatWebhookUrl", next.wechatWebhookUrl);

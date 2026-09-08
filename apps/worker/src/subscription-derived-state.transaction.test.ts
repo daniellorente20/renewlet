@@ -294,6 +294,9 @@ function openDerivedStateDatabase(): { db: DatabaseSync; env: Env } {
       cost_sharing_collection_reminder_enabled INTEGER NOT NULL,
       cost_sharing_next_collection_reminder_date TEXT,
       extra_json TEXT NOT NULL,
+      previous_price TEXT,
+      previous_price_currency TEXT,
+      previous_price_changed_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -416,6 +419,9 @@ function subscriptionRow(id: string, overrides: Partial<SubscriptionRow> = {}): 
     cost_sharing_collection_reminder_enabled: 0,
     cost_sharing_next_collection_reminder_date: null,
     extra_json: "{}",
+    previous_price: null,
+    previous_price_currency: null,
+    previous_price_changed_at: null,
     created_at: "2026-08-17T00:00:00.000Z",
     updated_at: "2026-08-17T00:00:00.000Z",
     ...overrides,
@@ -428,7 +434,8 @@ function insertSubscriptionStatement(env: Env, row: SubscriptionRow): D1Prepared
       id, user_id, name, logo, price, currency, billing_cycle, custom_days, custom_cycle_unit, one_time_term_count, one_time_term_unit,
       category, status, pinned, public_hidden, payment_method, start_date, next_billing_date, auto_renew, auto_calculate_next_billing_date,
       trial_end_date, website, notes, tags_json, reminder_days, repeat_reminder_enabled, repeat_reminder_interval, repeat_reminder_window,
-      cost_sharing_json, cost_sharing_collection_reminder_enabled, cost_sharing_next_collection_reminder_date, extra_json, created_at, updated_at
+      cost_sharing_json, cost_sharing_collection_reminder_enabled, cost_sharing_next_collection_reminder_date, extra_json,
+      previous_price, previous_price_currency, previous_price_changed_at, created_at, updated_at
     ) VALUES (${subscriptionRowValues(row).map(() => "?").join(", ")})
   `).bind(...subscriptionRowValues(row));
 }
