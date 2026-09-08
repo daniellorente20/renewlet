@@ -4,6 +4,7 @@ import { createDefaultAppSettings } from "../settings-defaults";
 import {
   applySettingsSecretUpdates,
   appSettingsSchema,
+  appSettingsSecretStatus,
   persistedSettingsBackupSchema,
   settingsUpdateBodySchema,
   toEditableAppSettings,
@@ -135,6 +136,31 @@ describe("settings schema", () => {
     expect(editable.telegramBotToken).toBe("");
     expect(editable.webhookUrl).toBe("");
     expect(editable.aiRecognition.apiKey).toBe("");
+  });
+
+  it("never returns the renewal webhook to the client and reports it as configured", () => {
+    const stored = createDefaultAppSettings();
+    stored.renewalWebhookUrl = "https://hooks.example.com/renewal";
+
+    const publicSettings = toPublicAppSettings(stored);
+    // A webhook URL carries its own bearer in the path, so it must not survive the public projection.
+    expect(publicSettings).not.toHaveProperty("renewalWebhookUrl");
+    expect(JSON.stringify(publicSettings)).not.toContain("hooks.example.com");
+    expect(toEditableAppSettings(publicSettings).renewalWebhookUrl).toBe("");
+    expect(appSettingsSecretStatus(stored).renewalWebhookUrl).toEqual({ configured: true });
+    expect(appSettingsSecretStatus(createDefaultAppSettings()).renewalWebhookUrl).toEqual({ configured: false });
+  });
+
+  it("keeps the renewal webhook independent of the summary webhook channel", () => {
+    const stored = createDefaultAppSettings();
+    stored.webhookUrl = "https://hooks.example.com/summary";
+    stored.renewalWebhookUrl = "https://hooks.example.com/renewal";
+
+    // Three downstream workflows read the summary payload. Clearing one endpoint must never touch
+    // the other, or fixing the new channel would silently break the ones already working.
+    const cleared = applySettingsSecretUpdates(stored, { renewalWebhookUrl: { action: "clear" } });
+    expect(cleared.renewalWebhookUrl).toBe("");
+    expect(cleared.webhookUrl).toBe("https://hooks.example.com/summary");
   });
 
   it("supports only plain or html Telegram message formats", () => {

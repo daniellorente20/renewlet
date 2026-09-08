@@ -16,6 +16,7 @@ export function topLevelSettingsSecretKey(key: keyof AppSettings): SettingsSecre
     case "notifyxApiKey":
     case "webhookUrl":
     case "webhookHeaders":
+    case "renewalWebhookUrl":
     case "dingtalkWebhookUrl":
     case "dingtalkSecret":
     case "wechatWebhookUrl":
@@ -47,6 +48,7 @@ export function applySecretDraftsToSettings(settings: AppSettings, drafts: Setti
       case "notifyxApiKey": next.notifyxApiKey = value; break;
       case "webhookUrl": next.webhookUrl = value; break;
       case "webhookHeaders": next.webhookHeaders = value; break;
+      case "renewalWebhookUrl": next.renewalWebhookUrl = value; break;
       case "dingtalkWebhookUrl": next.dingtalkWebhookUrl = value; break;
       case "dingtalkSecret": next.dingtalkSecret = value; break;
       case "wechatWebhookUrl": next.wechatWebhookUrl = value; break;

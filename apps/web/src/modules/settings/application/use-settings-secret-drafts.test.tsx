@@ -55,6 +55,30 @@ describe("useSettingsSecretDrafts", () => {
     });
   });
 
+  it("treats the renewal webhook as a write-only secret, not a plain setting", () => {
+    const { result } = renderHook(() => useSettingsSecretDrafts(DEFAULT_SETTINGS, false));
+
+    act(() => {
+      result.current.stageSetting("renewalWebhookUrl", "https://example.com/renewal");
+    });
+    // The draft drives the input, and the value leaves the browser only as a set intent.
+    expect(result.current.settingsWithDrafts.renewalWebhookUrl).toBe("https://example.com/renewal");
+    expect(result.current.updates()).toEqual({
+      renewalWebhookUrl: { action: "set", value: "https://example.com/renewal" },
+    });
+  });
+
+  it("clears a stored renewal webhook without touching the summary webhook", () => {
+    const { result } = renderHook(() => useSettingsSecretDrafts(DEFAULT_SETTINGS, false));
+
+    act(() => {
+      result.current.clear("renewalWebhookUrl");
+    });
+    // Confusing the two endpoints is the failure this separation exists to prevent, so clearing one
+    // must never emit an intent for the other.
+    expect(result.current.updates()).toEqual({ renewalWebhookUrl: { action: "clear" } });
+  });
+
   it("blocks secret changes while external integrations are disabled", () => {
     const { result } = renderHook(() => useSettingsSecretDrafts(DEFAULT_SETTINGS, true));
 

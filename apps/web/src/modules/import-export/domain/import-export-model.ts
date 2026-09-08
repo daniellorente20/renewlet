@@ -104,6 +104,7 @@ const SECRET_SETTING_KEYS = new Set<keyof AppSettings>([
   "webhookUrl",
   "webhookHeaders",
   "webhookPayload",
+  "renewalWebhookUrl",
   "dingtalkWebhookUrl",
   "dingtalkSecret",
   "dingtalkKeyword",
