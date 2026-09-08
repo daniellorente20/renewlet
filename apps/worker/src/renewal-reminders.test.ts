@@ -277,6 +277,24 @@ describe("monthly and quarterly only speak on a price rise", () => {
   });
 });
 
+describe("the amount never carries a parenthesis that reads like a bug", () => {
+  it("omits it whenever the price rise is not the reason the message exists", () => {
+    // A declared window sends regardless of price, so there is no rise to explain and the first
+    // reminder for any such subscription must not read "12,00 EUR (sin datos del ciclo anterior)".
+    const declared = row({ billing_cycle: "monthly", reminder_days: 7, price: "12", previous_price: null, previous_price_currency: null, previous_price_changed_at: null, next_billing_date: "2026-09-15", start_date: "2026-08-15" });
+    const decision = renewalReminderFor("2026-09-08", declared, nothingSent);
+    expect(decision?.event.amount).toBe("12,00 EUR");
+    expect(decision?.event.price_note).toBe("sin datos del ciclo anterior");
+  });
+
+  it("adds it only where a rise is the reason, so the note can only be a rise", () => {
+    const gated = row({ billing_cycle: "monthly", reminder_days: -1, price: "14", previous_price: "12", previous_price_currency: "EUR", previous_price_changed_at: "2026-09-01T00:00:00.000Z", next_billing_date: "2026-09-13", start_date: "2025-01-13" });
+    const decision = renewalReminderFor("2026-09-08", gated, nothingSent);
+    expect(decision?.event.amount).toBe("14,00 EUR (sube desde 12,00 EUR)");
+    expect(decision?.event.amount).not.toMatch(/sin datos|igual que|primer cobro|baja desde/);
+  });
+});
+
 describe("price_note", () => {
   it("covers all five cases in cycle-neutral wording", () => {
     expect(priceNoteFor(row(), 365)).toBe("sube desde 199,00 EUR");
