@@ -318,6 +318,126 @@ export async function expectScrollContentNearFooter(
   expect(gap, `${label}: scroll content to footer gap`).toBeLessThanOrEqual(maxGap);
 }
 
+export async function expectScrollableRegionReachesTarget(
+  scrollRegion: Locator,
+  target: Locator,
+  label: string,
+) {
+  await expect(scrollRegion, `${label}: scroll region visible`).toBeVisible();
+  await expect(target, `${label}: final target rendered`).toBeVisible();
+
+  const range = await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(range.scrollHeight, `${label}: content overflows scroll region`).toBeGreaterThan(range.clientHeight);
+
+  await scrollRegion.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect.poll(
+    () => scrollRegion.evaluate((element) => element.scrollTop),
+    { message: `${label}: scroll reaches end` },
+  ).toBeGreaterThanOrEqual(range.scrollHeight - range.clientHeight - 1);
+
+  const [scrollRect, targetRect] = await Promise.all([
+    scrollRegion.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { bottom: rect.bottom, top: rect.top };
+    }),
+    target.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { bottom: rect.bottom, top: rect.top };
+    }),
+  ]);
+  expect(targetRect.top, `${label}: final target top inside scroll region`).toBeGreaterThanOrEqual(scrollRect.top - 1);
+  expect(targetRect.bottom, `${label}: final target bottom inside scroll region`).toBeLessThanOrEqual(
+    scrollRect.bottom + 1,
+  );
+}
+
+async function waitForContainingDialogAnimations(target: Locator, label: string) {
+  // Vaul 在 data-state=open 的首帧就已可见；绝对几何只能在所属弹窗的真实动画完成后采样。
+  await target.evaluate(async (element, animationLabel) => {
+    const dialog = element.closest<HTMLElement>('[role="dialog"]');
+    if (!dialog) throw new Error(`Missing dialog for ${animationLabel}`);
+    await Promise.all(dialog.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+  }, label);
+}
+
+export async function expectDetailFooterStableWhileScrolling(
+  scrollRegion: Locator,
+  finalContent: Locator,
+  label: string,
+) {
+  await expect(scrollRegion, `${label}: detail scroll region visible`).toBeVisible();
+  await expect(finalContent, `${label}: final detail content rendered`).toBeVisible();
+  await waitForContainingDialogAnimations(scrollRegion, label);
+  const before = await scrollRegion.evaluate((element) => {
+    const footer = element.parentElement?.querySelector<HTMLElement>("[data-subscription-dialog-footer]");
+    if (!footer) throw new Error("Missing subscription detail footer");
+    const footerRect = footer.getBoundingClientRect();
+    return {
+      clientHeight: element.clientHeight,
+      footer: {
+        bottom: footerRect.bottom,
+        left: footerRect.left,
+        right: footerRect.right,
+        top: footerRect.top,
+      },
+      scrollHeight: element.scrollHeight,
+    };
+  });
+  expect(before.scrollHeight, `${label}: detail content overflows`).toBeGreaterThan(before.clientHeight);
+
+  await scrollRegion.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect.poll(
+    () => scrollRegion.evaluate((element) => element.scrollTop),
+    { message: `${label}: detail scroll reaches end` },
+  ).toBeGreaterThanOrEqual(before.scrollHeight - before.clientHeight - 1);
+
+  const [after, finalContentRect] = await Promise.all([
+    scrollRegion.evaluate((element) => {
+      const footer = element.parentElement?.querySelector<HTMLElement>("[data-subscription-dialog-footer]");
+      if (!footer) throw new Error("Missing subscription detail footer");
+      const footerRect = footer.getBoundingClientRect();
+      const scrollRect = element.getBoundingClientRect();
+      return {
+        footer: {
+          bottom: footerRect.bottom,
+          left: footerRect.left,
+          right: footerRect.right,
+          top: footerRect.top,
+        },
+        footerTop: footerRect.top,
+        scrollBottom: scrollRect.bottom,
+        scrollTop: scrollRect.top,
+      };
+    }),
+    finalContent.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { bottom: rect.bottom };
+    }),
+  ]);
+
+  for (const edge of ["top", "right", "bottom", "left"] as const) {
+    expect(Math.abs(after.footer[edge] - before.footer[edge]), `${label}: footer ${edge} offset`).toBeLessThanOrEqual(1);
+  }
+  expect(finalContentRect.bottom, `${label}: final content reaches visible scroll area`).toBeGreaterThanOrEqual(
+    after.scrollTop - 1,
+  );
+  expect(finalContentRect.bottom, `${label}: final content stays above scroll bottom`).toBeLessThanOrEqual(
+    after.scrollBottom + 1,
+  );
+  expect(finalContentRect.bottom, `${label}: final content stays above fixed footer`).toBeLessThanOrEqual(
+    after.footerTop + 1,
+  );
+}
+
 export async function captureLogoSheetScrollMetrics(sheet: Locator, viewportTestId: string | null) {
   return sheet.evaluate(async (element, testId) => {
     const wrapper = element.parentElement?.closest<HTMLElement>("[data-radix-popper-content-wrapper]") ?? null;

@@ -34,34 +34,32 @@ export function UpcomingRenewals({ subscriptions, today, notificationReminderDay
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)_max-content] gap-3">
       {upcoming.map((item) => (
         <div
           key={item.subscription.id}
           className={cn(
-            "flex items-center justify-between rounded-lg border border-border bg-secondary/50 p-4 transition-colors hover:bg-secondary",
+            "col-span-3 grid min-w-0 grid-cols-subgrid items-center rounded-lg border border-border bg-secondary/50 p-4 transition-colors hover:bg-secondary",
             item.daysUntil <= 3 && "border-warning/30 bg-warning/5"
           )}
         >
-          <div className="flex items-center gap-3">
-            <div className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold",
-              item.daysUntil <= 3
-                ? "bg-warning/20 text-warning"
-                : "bg-muted text-muted-foreground"
-            )}>
-              {item.daysUntil === 0 ? t("upcoming.todayShort") : t("upcoming.daysShort", { days: item.daysUntil })}
-            </div>
-            <div>
-              <p className="font-medium text-foreground">{item.subscription.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {item.kind === "expiry"
-                  ? t("upcoming.expiresOn", { date: formatDateOnlyMonthDay(item.subscription.nextBillingDate, locale) })
-                  : t("upcoming.renewsOn", { date: formatDateOnlyMonthDay(item.subscription.nextBillingDate, locale) })}
-              </p>
-            </div>
+          <div className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold",
+            item.daysUntil <= 3
+              ? "bg-warning/20 text-warning"
+              : "bg-muted text-muted-foreground"
+          )}>
+            {item.daysUntil === 0 ? t("upcoming.todayShort") : t("upcoming.daysShort", { days: item.daysUntil })}
           </div>
-          <p className="font-semibold text-foreground">
+          <div className="min-w-0">
+            <p className="min-w-0 wrap-break-word font-medium text-foreground">{item.subscription.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {item.kind === "expiry"
+                ? t("upcoming.expiresOn", { date: formatDateOnlyMonthDay(item.subscription.nextBillingDate, locale) })
+                : t("upcoming.renewsOn", { date: formatDateOnlyMonthDay(item.subscription.nextBillingDate, locale) })}
+            </p>
+          </div>
+          <p className="whitespace-nowrap text-right font-semibold tabular-nums text-foreground">
             {formatCurrency(item.subscription.price, item.subscription.currency)}
           </p>
         </div>

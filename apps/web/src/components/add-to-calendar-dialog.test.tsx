@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 const originalExecCommandDescriptor = Object.getOwnPropertyDescriptor(document, "execCommand");
+const originalMatchMediaDescriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
 const originalWindowOpen = window.open;
 const createdCalendarFeed = {
   enabled: true,
@@ -162,6 +163,22 @@ function mockUserAgent(userAgent: string) {
   };
 }
 
+function mockMobileViewport() {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(max-width: 639px)",
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 function withoutRandomUUID(callback: () => void) {
   const cryptoObject = window.crypto;
   const descriptor = Object.getOwnPropertyDescriptor(cryptoObject, "randomUUID");
@@ -208,6 +225,11 @@ describe("AddToCalendarDialog", () => {
     } else {
       Reflect.deleteProperty(document, "execCommand");
     }
+    if (originalMatchMediaDescriptor) {
+      Object.defineProperty(window, "matchMedia", originalMatchMediaDescriptor);
+    } else {
+      Reflect.deleteProperty(window, "matchMedia");
+    }
     Object.defineProperty(window, "open", { configurable: true, value: originalWindowOpen });
     vi.unstubAllGlobals();
   });
@@ -219,6 +241,40 @@ describe("AddToCalendarDialog", () => {
 
     expect(screen.getByRole("dialog", { name: "添加到日历" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下载 ICS 文件" })).toBeInTheDocument();
+  });
+
+  it("uses a fixed desktop frame and focuses the static title first", () => {
+    renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "添加到日历" });
+    const title = within(dialog).getByRole("heading", { name: "添加到日历" });
+    const header = title.parentElement;
+    const scrollRegions = dialog.querySelectorAll('[data-dialog-scroll-region="subscription-calendar"]');
+
+    expect(dialog).toHaveClass("h5-dialog-frame", "gap-0", "p-0");
+    expect(header).toHaveClass("shrink-0");
+    expect(scrollRegions).toHaveLength(1);
+    expect(scrollRegions[0]).toHaveClass("h5-mobile-sheet-scroll", "min-h-0", "flex-1", "content-start");
+    expect(scrollRegions[0]?.parentElement).toBe(dialog);
+    expect(title).toHaveAttribute("tabindex", "-1");
+    expect(title).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  });
+
+  it("uses one fixed-height mobile drawer with the scaffold as its scrollport", () => {
+    mockMobileViewport();
+    renderDialog();
+
+    const drawer = screen.getByRole("dialog", { name: "添加到日历" });
+    const title = within(drawer).getByRole("heading", { name: "添加到日历" });
+    const header = title.parentElement?.parentElement?.parentElement;
+    const scrollRegions = drawer.querySelectorAll('[data-dialog-scroll-region="subscription-calendar"]');
+
+    expect(drawer).toHaveClass("h-[calc(var(--app-viewport-height)-1rem)]", "overflow-hidden");
+    expect(header).toHaveClass("shrink-0");
+    expect(scrollRegions).toHaveLength(1);
+    expect(scrollRegions[0]).toHaveClass("h5-mobile-sheet-scroll", "min-h-0", "flex-1", "content-start");
+    expect(scrollRegions[0]?.parentElement).toBe(drawer);
   });
 
   it("keeps one dialog shell while detail data replaces the loading state", () => {
@@ -236,7 +292,11 @@ describe("AddToCalendarDialog", () => {
       </QueryClientProvider>,
     );
     const loadingDialog = screen.getByRole("dialog", { name: "添加到日历" });
+    const loadingHeader = within(loadingDialog).getByRole("heading", { name: "添加到日历" }).parentElement;
+    const scrollRegion = loadingDialog.querySelector('[data-dialog-scroll-region="subscription-calendar"]');
     const factsRegion = loadingDialog.querySelector('[data-dialog-region="calendar-facts"]');
+    expect(scrollRegion).not.toBeNull();
+    expect(loadingHeader).toHaveClass("shrink-0");
     expect(screen.getByTestId("subscription-calendar-data-loading")).toBeInTheDocument();
 
     rerender(
@@ -252,6 +312,8 @@ describe("AddToCalendarDialog", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "添加到日历" })).toBe(loadingDialog);
+    expect(within(loadingDialog).getByRole("heading", { name: "添加到日历" }).parentElement).toBe(loadingHeader);
+    expect(loadingDialog.querySelector('[data-dialog-scroll-region="subscription-calendar"]')).toBe(scrollRegion);
     expect(loadingDialog.querySelector('[data-dialog-region="calendar-facts"]')).toBe(factsRegion);
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.queryByTestId("subscription-calendar-data-loading")).not.toBeInTheDocument();
@@ -479,6 +541,23 @@ describe("AddToCalendarDialog", () => {
     await waitFor(() => expect(generateButton).toHaveFocus());
     expect(screen.getByRole("button", { name: "下载 ICS 文件" })).toBeEnabled();
     expect(screen.getByRole("link", { name: "用 Google Calendar 打开" })).toBeInTheDocument();
+  });
+
+  it("returns focus to the existing revoke trigger after cancellation", async () => {
+    const user = userEvent.setup();
+    mocks.getCalendarFeed.mockResolvedValueOnce({
+      enabled: true,
+      feedUrl: "https://example.com/calendar/renewals.ics?token=existing",
+    });
+
+    renderDialog();
+    const trigger = await screen.findByRole("button", { name: "撤销订阅链接" });
+    await user.click(trigger);
+    const confirmDialog = screen.getByRole("alertdialog", { name: "撤销这个订阅链接？" });
+    await user.click(within(confirmDialog).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "撤销这个订阅链接？" })).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 
   it("uses an Android insert intent for the one-off calendar event", () => {

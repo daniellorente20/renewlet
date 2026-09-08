@@ -24,6 +24,37 @@ function regionOrder(container: HTMLElement): string[] {
     .map((region) => region.dataset["dialogRegion"] ?? "");
 }
 
+function expectDetailFrameContract(container: HTMLElement): {
+  footer: HTMLElement;
+  frame: HTMLElement;
+  scrollBody: HTMLElement;
+} {
+  const frame = container.firstElementChild;
+  const scrollBody = container.querySelector<HTMLElement>("[data-subscription-dialog-scroll]");
+  const footer = container.querySelector<HTMLElement>("[data-subscription-dialog-footer]");
+  if (!(frame instanceof HTMLElement) || !scrollBody || !footer) {
+    throw new Error("Missing subscription detail frame regions");
+  }
+
+  expect(frame).toHaveClass(
+    "grid",
+    "min-h-0",
+    "flex-1",
+    "grid-rows-[minmax(0,1fr)_auto]",
+    "overflow-hidden",
+  );
+  expect(scrollBody).toHaveClass("h5-mobile-sheet-scroll");
+  expect(footer.tagName).toBe("FOOTER");
+  expect(frame.children).toHaveLength(2);
+  expect(scrollBody.parentElement).toBe(frame);
+  expect(scrollBody.nextElementSibling).toBe(footer);
+  expect(footer.parentElement).toBe(frame);
+  expect(container.querySelector('[data-dialog-region="subscription-actions"]')).toBe(footer);
+  expect(scrollBody).not.toContainElement(footer);
+
+  return { footer, frame, scrollBody };
+}
+
 describe("subscription dialog scaffolds", () => {
   it("keeps form loading and resolved regions in the same order", () => {
     const resolved = render(
@@ -116,16 +147,10 @@ describe("subscription dialog scaffolds", () => {
     expect(skeletonCounts[1] ?? 0).toBeGreaterThan(skeletonCounts[0] ?? 0);
   });
 
-  it("keeps detail loading and resolved regions in the same order", () => {
-    const expected = [
-      "subscription-identity",
-      "subscription-summary",
-      "subscription-facts",
-      "subscription-actions",
-    ];
+  it("keeps detail loading and resolved frames on the same body and footer contract", () => {
+    const expected = ["subscription-summary", "subscription-facts", "subscription-actions"];
     const resolved = render(
       <SubscriptionDetailScaffold
-        identity="identity"
         summary="summary"
         facts="facts"
         extensions="extensions"
@@ -133,6 +158,7 @@ describe("subscription dialog scaffolds", () => {
       />,
     );
     expect(regionOrder(resolved.container)).toEqual(expected);
+    expectDetailFrameContract(resolved.container);
     resolved.unmount();
 
     const loadingSlots = createSubscriptionDetailLoadingSlots({
@@ -151,6 +177,13 @@ describe("subscription dialog scaffolds", () => {
     });
     const loading = render(<SubscriptionDetailScaffold {...loadingSlots} />);
     expect(regionOrder(loading.container)).toEqual(expected);
+    const loadingFrame = expectDetailFrameContract(loading.container);
+    expect(loadingFrame.scrollBody).toContainElement(
+      loading.container.querySelector('[data-dialog-region="subscription-summary"]'),
+    );
+    expect(loadingFrame.scrollBody).toContainElement(
+      loading.container.querySelector('[data-dialog-region="subscription-facts"]'),
+    );
   });
 
   it("adds detail leaves for family sharing and trial facts", () => {

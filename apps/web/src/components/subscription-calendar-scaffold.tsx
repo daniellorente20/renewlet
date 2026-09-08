@@ -45,7 +45,15 @@ export function SubscriptionCalendarScaffold({
   ...props
 }: SubscriptionCalendarScaffoldProps) {
   return (
-    <div className={cn("grid gap-5", className)} {...props}>
+    // Dialog/Drawer 外壳提供确定高度；scaffold 必须持续拥有剩余空间和唯一滚动条，loading 切换只能替换内部 slots。
+    <div
+      {...props}
+      className={cn(
+        "h5-mobile-sheet-scroll grid min-h-0 flex-1 content-start gap-5 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
+        className,
+      )}
+      data-dialog-scroll-region="subscription-calendar"
+    >
       <dl
         className="grid divide-y divide-border rounded-md border border-border bg-background/50 text-sm"
         data-dialog-region="calendar-facts"

@@ -6,13 +6,12 @@ interface SubscriptionDetailScaffoldProps extends HTMLAttributes<HTMLDivElement>
   actions: ReactNode;
   extensions?: ReactNode;
   facts: ReactNode;
-  identity: ReactNode;
   summary: ReactNode;
 }
 
 export type SubscriptionDetailScaffoldSlots = Pick<
   SubscriptionDetailScaffoldProps,
-  "actions" | "extensions" | "facts" | "identity" | "summary"
+  "actions" | "extensions" | "facts" | "summary"
 >;
 
 export interface SubscriptionDetailLoadingStructure {
@@ -30,31 +29,38 @@ export function SubscriptionDetailScaffold({
   className,
   extensions,
   facts,
-  identity,
   summary,
   ...props
 }: SubscriptionDetailScaffoldProps) {
   return (
-    <div className={cn("grid gap-5", className)} {...props}>
-      <div className="flex items-start gap-3" data-dialog-region="subscription-identity">
-        {identity}
-      </div>
+    <div
+      className={cn("grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden", className)}
+      {...props}
+    >
+      {/* 外层 Dialog/Drawer 提供确定高度；正文独占可收缩轨道，footer 始终留在滚动区之外。 */}
       <div
-        className="flex items-center justify-between rounded-lg bg-secondary/50 p-4"
-        data-dialog-region="subscription-summary"
+        className="h5-mobile-sheet-scroll grid min-w-0 content-start gap-5 px-5 py-4 sm:p-6"
+        data-dialog-scroll-region="subscription-detail"
+        data-subscription-dialog-scroll=""
       >
-        {summary}
+        <div
+          className="flex items-center justify-between rounded-lg bg-secondary/50 p-4"
+          data-dialog-region="subscription-summary"
+        >
+          {summary}
+        </div>
+        <div className="grid gap-3" data-dialog-region="subscription-facts">
+          {facts}
+          {extensions}
+        </div>
       </div>
-      <div className="grid gap-3" data-dialog-region="subscription-facts">
-        {facts}
-        {extensions}
-      </div>
-      <div
-        className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
+      <footer
+        className="flex shrink-0 flex-col gap-2 border-t border-border bg-card px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:px-6 sm:pb-4"
         data-dialog-region="subscription-actions"
+        data-subscription-dialog-footer=""
       >
         {actions}
-      </div>
+      </footer>
     </div>
   );
 }
@@ -80,15 +86,6 @@ export function createSubscriptionDetailLoadingSlots({
   structure: SubscriptionDetailLoadingStructure;
 }): SubscriptionDetailScaffoldSlots {
   return {
-    identity: (
-      <>
-        <Skeleton className="h-12 w-12 shrink-0 rounded-lg" />
-        <div className="grid min-w-0 flex-1 gap-2">
-          <Skeleton className="h-6 w-2/3" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-      </>
-    ),
     summary: (
       <>
         <div className="grid min-w-0 gap-2">

@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, type Response, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type Response, type Route, type TestInfo } from "@playwright/test";
 import { expectLabelControlGap, getRequiredLocatorBoundingBox } from "./layout";
 
 export function uniqueE2EName(testInfo: TestInfo, prefix: string): string {
@@ -41,6 +41,73 @@ export async function openSubscriptionEditDialog(page: Page, subscriptionName: s
   }
   await expect(dialog).toBeVisible();
   return dialog;
+}
+
+export async function openSubscriptionDetailDialog(page: Page, subscriptionName: string) {
+  const card = subscriptionCard(page, subscriptionName);
+  await expect(card).toBeVisible();
+  const trigger = card.getByTestId("subscription-card-primary-action");
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: subscriptionName });
+  await expect(dialog).toBeVisible();
+  return { dialog, trigger };
+}
+
+export async function openSubscriptionCalendarDialog(page: Page, subscriptionName: string) {
+  await page.getByPlaceholder("搜索订阅、标签或备注...").fill(subscriptionName);
+  const card = subscriptionCard(page, subscriptionName);
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "更多操作" }).click();
+  await page.getByRole("menuitem", { name: "添加到日历" }).click();
+  const dialog = page.getByRole("dialog", { name: "添加到日历" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+export async function deferNextSubscriptionDetailRead(page: Page, subscriptionId: string) {
+  const detailPath = `/api/app/subscriptions/${encodeURIComponent(subscriptionId)}`;
+  const matchesDetailPath = (url: URL) => url.pathname === detailPath;
+  let releaseRequest!: () => void;
+  let reportRequest!: (url: string) => void;
+  let held = false;
+  let released = false;
+  const requestReleased = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
+  const requestObserved = new Promise<string>((resolve) => {
+    reportRequest = resolve;
+  });
+  // 卡片 pointer intent 会先于 click 发起 detail GET；按真实 id 精确冻结，不能误伤同层集合端点。
+  const holdDetailRequest = async (route: Route) => {
+    const request = route.request();
+    if (held || request.method() !== "GET") {
+      await route.continue();
+      return;
+    }
+
+    held = true;
+    reportRequest(request.url());
+    await requestReleased;
+    if (!page.isClosed()) await route.continue();
+  };
+  const release = () => {
+    if (released) return;
+    released = true;
+    releaseRequest();
+  };
+  const handlePageClose = () => release();
+  await page.route(matchesDetailPath, holdDetailRequest);
+  page.once("close", handlePageClose);
+
+  return {
+    waitForRequest: () => requestObserved,
+    release,
+    async dispose() {
+      release();
+      page.off("close", handlePageClose);
+      if (!page.isClosed()) await page.unroute(matchesDetailPath, holdDetailRequest);
+    },
+  };
 }
 
 export async function createSubscription(

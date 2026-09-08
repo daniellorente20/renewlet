@@ -70,14 +70,22 @@ function MobileBottomDrawerContent({
       >
         <Drawer.Handle className="h5-mobile-sheet-handle" />
         <div className={cn("flex items-start justify-between gap-4 px-5 pb-3 pt-4", headerClassName)}>
-          <div className="min-w-0">
-            <Drawer.Title className={cn("flex min-w-0 items-center gap-2 text-base font-semibold text-foreground", titleClassName)}>
-              {icon}
-              <span className="min-w-0 truncate">{title}</span>
-            </Drawer.Title>
-            <Drawer.Description className={descriptionClass}>
-              {description}
-            </Drawer.Description>
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            {icon ? (
+              <div aria-hidden="true" className="shrink-0">
+                {icon}
+              </div>
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <Drawer.Title
+                className={cn("min-w-0 text-base font-semibold text-foreground", titleClassName)}
+              >
+                <span className="block min-w-0 truncate">{title}</span>
+              </Drawer.Title>
+              <Drawer.Description className={descriptionClass}>
+                {description}
+              </Drawer.Description>
+            </div>
           </div>
           <div className="-mr-2 -mt-2 flex shrink-0 items-center gap-2">
             {actions}

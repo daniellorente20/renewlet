@@ -176,8 +176,15 @@ describe("SubscriptionDetailDialog", () => {
       onEditSubscription: vi.fn(),
     });
     const dialog = screen.getByRole("dialog", { name: "Fastmail" });
-    const identityRegion = dialog.querySelector('[data-dialog-region="subscription-identity"]');
-    expect(screen.getByTestId("subscription-detail-data-loading")).toBeInTheDocument();
+    const loadingTitle = within(dialog).getByRole("heading", { name: "Fastmail" });
+    const loadingHeader = loadingTitle.parentElement?.parentElement?.parentElement;
+    const loadingFrame = screen.getByTestId("subscription-detail-data-loading");
+    const scrollBody = loadingFrame.querySelector('[data-subscription-dialog-scroll]');
+    const footer = loadingFrame.querySelector('[data-subscription-dialog-footer]');
+    expect(scrollBody?.parentElement).toBe(loadingFrame);
+    expect(loadingHeader).toHaveClass("shrink-0");
+    expect(scrollBody?.nextElementSibling).toBe(footer);
+    expect(footer?.parentElement).toBe(loadingFrame);
 
     rerender(
       <TooltipProvider delayDuration={0}>
@@ -197,7 +204,12 @@ describe("SubscriptionDetailDialog", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "Fastmail" })).toBe(dialog);
-    expect(dialog.querySelector('[data-dialog-region="subscription-identity"]')).toBe(identityRegion);
+    const resolvedTitle = within(dialog).getByRole("heading", { name: "Fastmail" });
+    expect(resolvedTitle.parentElement?.parentElement?.parentElement).toBe(loadingHeader);
+    expect(dialog.querySelector('[data-subscription-dialog-scroll]')).toBe(scrollBody);
+    expect(dialog.querySelector('[data-subscription-dialog-footer]')).toBe(footer);
+    expect(scrollBody?.parentElement).toBe(loadingFrame);
+    expect(scrollBody?.nextElementSibling).toBe(footer);
     expect(screen.queryByTestId("subscription-detail-data-loading")).not.toBeInTheDocument();
     expect(screen.getByText("团队年度订阅", { exact: false })).toBeInTheDocument();
   });
@@ -242,7 +254,10 @@ describe("SubscriptionDetailDialog", () => {
       "href",
       "https://fastmail.example/billing",
     );
-    expect(within(dialog).getByText(/团队年度订阅/)).toHaveClass("whitespace-pre-wrap", "wrap-break-word");
+    const notes = within(dialog).getByText(/团队年度订阅/);
+    expect(notes).toHaveClass("whitespace-pre-wrap", "wrap-break-word");
+    expect(notes).not.toHaveClass("max-h-48");
+    expect(notes).not.toHaveClass("overflow-y-auto");
     expect(within(dialog).getByText(/负责人：Alice/)).toBeInTheDocument();
   });
 
@@ -360,6 +375,29 @@ describe("SubscriptionDetailDialog", () => {
     ]);
   });
 
+  it("focuses the desktop title without including the decorative logo in the dialog name", () => {
+    mockMobile(false);
+    renderDetailDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "Fastmail" });
+    const title = within(dialog).getByRole("heading", { name: "Fastmail" });
+    const logo = dialog.querySelector(".subscription-logo-tile");
+    const header = title.parentElement?.parentElement?.parentElement;
+    const scrollRegions = dialog.querySelectorAll('[data-dialog-scroll-region="subscription-detail"]');
+    if (!title.parentElement) throw new Error("Missing desktop subscription detail title stack");
+    const category = within(title.parentElement).getByText("开发工具");
+
+    expect(dialog).toHaveClass("h5-dialog-frame", "overflow-hidden");
+    expect(header).toHaveClass("shrink-0");
+    expect(scrollRegions).toHaveLength(1);
+    expect(scrollRegions[0]?.parentElement?.parentElement).toBe(dialog);
+    expect(dialog).toHaveAccessibleName("Fastmail");
+    expect(title).toHaveAttribute("tabindex", "-1");
+    expect(title).toHaveFocus();
+    expect(logo?.parentElement).toHaveAttribute("aria-hidden", "true");
+    expect(category).toHaveClass("min-w-0", "wrap-break-word");
+  });
+
   it("renders concrete custom billing cycle labels", () => {
     renderDetailDialog({
       subscription: {
@@ -393,8 +431,26 @@ describe("SubscriptionDetailDialog", () => {
     renderDetailDialog();
 
     const drawer = screen.getByRole("dialog", { name: "Fastmail" });
+    const headings = within(drawer).getAllByRole("heading", { name: "Fastmail" });
+    const logo = drawer.querySelector(".subscription-logo-tile");
+    const scrollRegions = drawer.querySelectorAll('[data-dialog-scroll-region="subscription-detail"]');
+    const title = headings[0];
+    if (!title?.parentElement) throw new Error("Missing mobile subscription detail title stack");
+    const category = within(title.parentElement).getByText("开发工具");
+    const header = title.parentElement.parentElement?.parentElement;
 
-    expect(drawer).toHaveClass("h5-drawer-panel", "overflow-hidden");
+    expect(drawer).toHaveClass(
+      "h5-drawer-panel",
+      "h-[calc(var(--app-viewport-height)-1rem)]",
+      "overflow-hidden",
+    );
+    expect(header).toHaveClass("shrink-0");
+    expect(drawer).toHaveAccessibleName("Fastmail");
+    expect(headings).toHaveLength(1);
+    expect(logo?.parentElement).toHaveAttribute("aria-hidden", "true");
+    expect(scrollRegions).toHaveLength(1);
+    expect(scrollRegions[0]?.parentElement?.parentElement).toBe(drawer);
+    expect(category).toHaveClass("min-w-0", "wrap-break-word");
     expect(within(drawer).getAllByRole("button", { name: "关闭" })).toHaveLength(2);
     expect(within(drawer).getByText(/团队年度订阅/)).toBeInTheDocument();
   });

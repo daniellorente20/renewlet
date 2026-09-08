@@ -5,17 +5,20 @@ import {
   createSubscription,
   expectTagInputPopoverLayout,
   expectTagSuggestionListScrollable,
+  openSubscriptionDetailDialog,
   openSubscriptionEditDialog,
   subscriptionCard,
   uniqueE2EName,
 } from "./support/subscriptions";
 import {
   expectActionNearContainerBottom,
+  expectDetailFooterStableWhileScrolling,
   expectNoHorizontalOverflow,
   expectOverlayLeavesTopScrim,
+  expectScrollableRegionReachesTarget,
   getRequiredLocatorBoundingBox,
 } from "./support/layout";
-import { createProductSubscriptionSeed } from "./support/product-api";
+import { createProductSubscriptionSeed, deleteProductSubscriptionsByName } from "./support/product-api";
 
 type SubscriptionCardLayoutSeed = {
   name: string;
@@ -63,6 +66,31 @@ async function captureSubscriptionCardLayout(card: Locator) {
       relativeBilling: query("subscription-card-meta-relative-billing"),
       startDate: query("subscription-card-meta-start-date"),
       statusBadge: query("subscription-card-badge-status"),
+    };
+  });
+}
+
+async function dateOnlyFromLocalToday(page: Page, days: number) {
+  return page.evaluate((offset) => {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, days);
+}
+
+async function captureAmountLineMetrics(amount: Locator) {
+  return amount.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lineRects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    const amountRect = element.getBoundingClientRect();
+    return {
+      amountRight: amountRect.right,
+      lineCount: lineRects.length,
+      textRight: lineRects.at(-1)?.right ?? Number.NaN,
     };
   });
 }
@@ -203,4 +231,159 @@ test("mobile subscription card keeps date metadata naturally on the first availa
   expect(layout.categoryBadge.right, "category badge should stay inside card").toBeLessThanOrEqual(layout.cardRight + 1);
   expect(layout.statusBadge.right, "status badge should stay inside card").toBeLessThanOrEqual(layout.cardRight + 1);
   expect(layout.renewalBadge.right, "renewal badge should stay inside card").toBeLessThanOrEqual(layout.cardRight + 1);
+});
+
+test("mobile upcoming renewal amounts stay single-line and right-aligned without page overflow", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  await page.goto("/");
+  const scenarioIdentity = `${testInfo.project.name}-${testInfo.workerIndex}-${testInfo.repeatEachIndex}`;
+  const upcomingRecords = [
+    {
+      amount: "$6 USD",
+      currency: "USD",
+      name: `000-UpcomingRenewalWithAnUnbrokenResponsiveName-${scenarioIdentity}`,
+      price: "6",
+    },
+    {
+      amount: "$149 USD",
+      currency: "USD",
+      name: `001-Upcoming Medium-${scenarioIdentity}`,
+      price: "149",
+    },
+    {
+      amount: "€199 EUR",
+      currency: "EUR",
+      name: `002-Upcoming Short-${scenarioIdentity}`,
+      price: "199",
+    },
+  ] as const;
+  const [startDate, nextBillingDate] = await Promise.all([
+    dateOnlyFromLocalToday(page, -30),
+    // 首页只展示真实排序后的前五条；放在 today 桶后由数字前缀稳定选中本测试的三条样本。
+    dateOnlyFromLocalToday(page, 0),
+  ]);
+
+  try {
+    await deleteProductSubscriptionsByName(page, upcomingRecords.map((record) => record.name));
+    for (const record of upcomingRecords) {
+      await createProductSubscriptionSeed(page, {
+        name: record.name,
+        price: record.price,
+        currency: record.currency,
+        startDate,
+        nextBillingDate,
+        reminderDays: 30,
+      });
+    }
+    await page.reload();
+    const upcomingSection = page.getByRole("heading", { name: "即将续费/到期", exact: true }).last().locator("..");
+    const amounts: Locator[] = [];
+    for (const record of upcomingRecords) {
+      const name = upcomingSection.getByText(record.name, { exact: true });
+      await expect(name).toBeVisible();
+      const amount = name.locator("../..").getByText(record.amount, { exact: true });
+      await expect(amount).toBeVisible();
+      amounts.push(amount);
+    }
+
+    const metrics = await Promise.all(amounts.map((amount) => captureAmountLineMetrics(amount)));
+    for (const [index, amount] of metrics.entries()) {
+      expect(amount.lineCount, `upcoming amount ${index}: rendered text lines`).toBe(1);
+      expect(Number.isFinite(amount.textRight), `upcoming amount ${index}: text range right edge`).toBe(true);
+      expect(
+        Math.abs(amount.textRight - amount.amountRight),
+        `upcoming amount ${index}: text and amount cell right edge`,
+      ).toBeLessThanOrEqual(1);
+    }
+    for (const amount of metrics.slice(1)) {
+      expect(
+        Math.abs(metrics[0]!.amountRight - amount.amountRight),
+        "upcoming amount cells share one right edge",
+      ).toBeLessThanOrEqual(1);
+    }
+    await expectNoHorizontalOverflow(page, "mobile upcoming renewal rows");
+  } finally {
+    await deleteProductSubscriptionsByName(page, upcomingRecords.map((record) => record.name));
+  }
+});
+
+test("mobile calendar and long detail preserve scroll, title, breakpoint, and focus contracts", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 720 });
+  await page.goto("/");
+  const subscriptionName = uniqueE2EName(testInfo, "Responsive Mobile Detail");
+  const notesEnd = `${subscriptionName} notes end`;
+  const notesValue = [
+    ...Array.from({ length: 24 }, (_, index) => `Mobile responsive detail note line ${index + 1}.`),
+    notesEnd,
+  ].join("\n");
+  await createProductSubscriptionSeed(page, {
+    name: subscriptionName,
+    price: "123456.78",
+    currency: "USD",
+    category: "hosting_domains",
+    paymentMethod: "google_pay",
+    startDate: "2099-01-01",
+    nextBillingDate: "2099-06-15",
+    reminderDays: 30,
+    tags: Array.from({ length: 30 }, (_, index) => `responsive-mobile-detail-tag-${index + 1}`),
+    notes: notesValue,
+  });
+
+  try {
+    await page.goto("/subscriptions");
+    await expect(page.getByRole("heading", { name: "订阅列表" })).toBeVisible();
+
+    const mobileDetail = await openSubscriptionDetailDialog(page, subscriptionName);
+    await expect(mobileDetail.dialog.getByRole("heading", { name: subscriptionName, exact: true })).toHaveCount(1);
+    const mobileFooter = mobileDetail.dialog.locator("[data-subscription-dialog-footer]");
+    for (const action of ["关闭", "添加到日历", "续订", "编辑"]) {
+      await expect(mobileFooter.getByRole("button", { name: action, exact: true })).toBeVisible();
+    }
+    const notes = mobileDetail.dialog.getByText(notesEnd, { exact: false });
+    await expectDetailFooterStableWhileScrolling(
+      mobileDetail.dialog.locator('[data-dialog-scroll-region="subscription-detail"]'),
+      notes,
+      "mobile subscription detail",
+    );
+
+    await mobileFooter.getByRole("button", { name: "添加到日历", exact: true }).click();
+    await expect(mobileDetail.dialog).toBeHidden();
+    const calendarDialog = page.getByRole("dialog", { name: "添加到日历" });
+    await expect(calendarDialog).toBeVisible();
+    await expect.poll(
+      () => calendarDialog.evaluate((element) => element.contains(document.activeElement)),
+      { message: "mobile calendar dialog owns focus after detail transition" },
+    ).toBe(true);
+    await expectScrollableRegionReachesTarget(
+      calendarDialog.locator('[data-dialog-scroll-region="subscription-calendar"]'),
+      calendarDialog.getByRole("link", { name: "用 Yahoo Calendar 打开" }),
+      "mobile subscription calendar",
+    );
+    await calendarDialog.getByRole("button", { name: "关闭" }).click();
+    await expect(calendarDialog).toBeHidden();
+
+    const reopenedMobileDetail = await openSubscriptionDetailDialog(page, subscriptionName);
+    await reopenedMobileDetail.dialog.locator("[data-subscription-dialog-footer]")
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
+    await expect(reopenedMobileDetail.dialog).toBeHidden();
+    await expect(reopenedMobileDetail.trigger).toBeFocused();
+
+    for (const boundary of [
+      { width: 639, panelClass: /h5-drawer-panel/ },
+      { width: 640, panelClass: /h5-dialog-frame/ },
+    ]) {
+      await page.setViewportSize({ width: boundary.width, height: 720 });
+      const detail = await openSubscriptionDetailDialog(page, subscriptionName);
+      await expect(detail.dialog).toHaveClass(boundary.panelClass);
+      await expect(detail.dialog.getByRole("heading", { name: subscriptionName, exact: true })).toHaveCount(1);
+      await detail.dialog.locator("[data-subscription-dialog-footer]")
+        .getByRole("button", { name: "关闭", exact: true })
+        .click();
+      await expect(detail.dialog).toBeHidden();
+      await expect(detail.trigger).toBeFocused();
+    }
+  } finally {
+    await deleteProductSubscriptionsByName(page, [subscriptionName]);
+  }
 });

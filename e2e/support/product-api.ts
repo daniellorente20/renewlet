@@ -12,6 +12,7 @@ export type ProductSubscriptionSeed = {
   paymentMethod?: string | null;
   startDate: string | null;
   nextBillingDate: string;
+  notes?: string;
   autoRenew?: boolean;
   autoCalculateNextBillingDate?: boolean;
   reminderDays?: number;
@@ -163,7 +164,7 @@ export async function createProductSubscriptionSeed(page: Page, seed: ProductSub
       publicHidden: false,
       trialEndDate: null,
       website: null,
-      notes: null,
+      notes: seed.notes ?? null,
       tags: seed.tags ?? [],
       reminderDays: seed.reminderDays ?? 3,
       repeatReminderEnabled: false,
@@ -175,4 +176,10 @@ export async function createProductSubscriptionSeed(page: Page, seed: ProductSub
   });
 
   expect(result.ok, `create subscription seed ${seed.name}: ${result.status} ${result.body}`).toBe(true);
+  const responseData = isRecord(result.json) && isRecord(result.json.data) ? result.json.data : null;
+  const subscription = responseData && isRecord(responseData.subscription) ? responseData.subscription : null;
+  if (!subscription || typeof subscription.id !== "string") {
+    throw new Error(`Invalid create subscription response: ${result.body}`);
+  }
+  return subscription.id;
 }

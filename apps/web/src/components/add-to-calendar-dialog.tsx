@@ -95,6 +95,7 @@ export function AddToCalendarDialog({
 }: AddToCalendarDialogProps) {
   const isMobile = useMediaQuery("(max-width: 639px)");
   const { t } = useI18n();
+  const desktopTitleRef = useRef<HTMLHeadingElement>(null);
   if (!subscription && !loading) return null;
 
   const titleSubscription = subscription ?? loadingPreview;
@@ -129,9 +130,9 @@ export function AddToCalendarDialog({
             descriptionMode={titleSubscription ? "visible" : "sr-only"}
             closeLabel={t("common.close")}
             icon={<CalendarPlus className="h-5 w-5 shrink-0 text-primary" />}
-            className="max-h-[calc(var(--app-viewport-height)-1rem)]"
-            headerClassName="border-b border-border pb-4"
-            bodyClassName="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+            className="h-[calc(var(--app-viewport-height)-1rem)]"
+            headerClassName="shrink-0 border-b border-border pb-4"
+            bodyClassName={null}
             aria-busy={loading ? true : undefined}
           >
             {content}
@@ -144,11 +145,18 @@ export function AddToCalendarDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="overflow-hidden border-border bg-card p-0 sm:max-w-md"
+        layout="frame"
+        closeLabel={t("common.close")}
+        className="h5-dialog-frame gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-md"
         aria-busy={loading ? true : undefined}
+        onOpenAutoFocus={(event) => {
+          // 静态标题先接收初始焦点，避免弹窗打开即把键盘用户带到会产生外部副作用的首个日历操作。
+          event.preventDefault();
+          desktopTitleRef.current?.focus();
+        }}
       >
-        <DialogHeader className="border-b border-border px-5 py-4 pr-12 text-left">
-          <DialogTitle className="flex items-center gap-2 text-base leading-6">
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12 text-left">
+          <DialogTitle ref={desktopTitleRef} tabIndex={-1} className="flex items-center gap-2 text-base leading-6">
             <CalendarPlus className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <span className="min-w-0 wrap-break-word">{title}</span>
           </DialogTitle>
@@ -156,9 +164,7 @@ export function AddToCalendarDialog({
             {description}
           </DialogDescription>
         </DialogHeader>
-        <div className="px-5 py-4">
-          {content}
-        </div>
+        {content}
       </DialogContent>
     </Dialog>
   );
@@ -515,7 +521,7 @@ function SubscriptionCalendarDialogContent({
               pending={deleteSubscriptionFeed.isPending}
               disabled={isSystemCalendarActionPending || isFeedMutationPending}
               onConfirm={handleRevoke}
-              restoreFocusRef={generateFeedButtonRef}
+              replacementFocusRef={generateFeedButtonRef}
               destructive
             />
           </div>
@@ -618,7 +624,7 @@ function CalendarFeedConfirmAction({
   loadingLabel,
   destructive = false,
   onConfirm,
-  restoreFocusRef,
+  replacementFocusRef,
   pending,
   disabled,
 }: {
@@ -630,7 +636,7 @@ function CalendarFeedConfirmAction({
   loadingLabel: string;
   destructive?: boolean;
   onConfirm: () => Promise<boolean>;
-  restoreFocusRef?: RefObject<HTMLButtonElement | null>;
+  replacementFocusRef?: RefObject<HTMLButtonElement | null>;
   pending: boolean;
   disabled: boolean;
 }) {
@@ -657,10 +663,12 @@ function CalendarFeedConfirmAction({
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent
-        onCloseAutoFocus={restoreFocusRef ? (event) => {
-          // 撤销会卸载原触发按钮，关闭确认框时必须把焦点交给同位置的“生成订阅链接”。
+        onCloseAutoFocus={replacementFocusRef ? (event) => {
+          const replacement = replacementFocusRef.current;
+          // 成功撤销会卸载原触发按钮；取消时替代项不存在，必须保留 Radix 的 Trigger 恢复路径。
+          if (!replacement) return;
           event.preventDefault();
-          restoreFocusRef.current?.focus();
+          replacement.focus();
         } : undefined}
       >
         <AlertDialogHeader>

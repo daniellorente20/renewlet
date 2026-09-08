@@ -5,18 +5,7 @@ import {
   deleteProductSubscriptionsByName,
 } from "./product-api";
 import { gotoSettingsSectionAfterHydration } from "./settings";
-import { subscriptionCard, uniqueE2EName } from "./subscriptions";
-
-async function openSubscriptionCalendarDialog(page: Page, subscriptionName: string) {
-  await page.getByPlaceholder("搜索订阅、标签或备注...").fill(subscriptionName);
-  const card = subscriptionCard(page, subscriptionName);
-  await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "更多操作" }).click();
-  await page.getByRole("menuitem", { name: "添加到日历" }).click();
-  const dialog = page.getByRole("dialog", { name: "添加到日历" });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
+import { openSubscriptionCalendarDialog, uniqueE2EName } from "./subscriptions";
 
 export async function runCalendarFeedManagementJourney(
   page: Page,
@@ -55,7 +44,21 @@ export async function runCalendarFeedManagementJourney(
     await calendarDialog.getByRole("button", { name: "生成订阅链接" }).click();
     expect((await createResponse).ok()).toBe(true);
     await expect(calendarDialog.getByLabel("本次订阅 URL")).toBeVisible();
-    await expect(calendarDialog.getByRole("button", { name: "撤销订阅链接" })).toBeVisible();
+    const revokeFromCalendar = calendarDialog.getByRole("button", { name: "撤销订阅链接" });
+    const calendarDialogShell = page.locator('[role="dialog"]').filter({
+      has: page.locator('[data-dialog-scroll-region="subscription-calendar"]'),
+    });
+    await expect(revokeFromCalendar).toBeVisible();
+    await revokeFromCalendar.click();
+    const calendarConfirmation = page.getByRole("alertdialog", { name: "撤销这个订阅链接？" });
+    await expect(calendarConfirmation).toBeVisible();
+    // Radix 会把确认框背后的父 Dialog 移出无障碍树，但视觉 shell 必须保持挂载以便取消后恢复焦点。
+    await expect(calendarDialogShell).toBeVisible();
+    await expect(calendarDialog).toHaveCount(0);
+    await calendarConfirmation.getByRole("button", { name: "取消" }).click();
+    await expect(calendarConfirmation).toBeHidden();
+    await expect(calendarDialog).toBeVisible();
+    await expect(revokeFromCalendar).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(calendarDialog).toBeHidden();
 

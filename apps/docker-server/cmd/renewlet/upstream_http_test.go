@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"reflect"
@@ -37,39 +38,53 @@ func TestDefaultUpstreamHTTPClientKeepsProxyAndTLSPolicy(t *testing.T) {
 }
 
 func TestDefaultUpstreamHTTPClientRoutesHTTPSThroughEnvironmentProxy(t *testing.T) {
-	proxyURL, requests := startHTTPProxyRecorder(t)
-	// 子进程隔离宿主机代理环境，避免开发机已有 HTTP(S)_PROXY 污染 CONNECT 断言。
-	cmd := exec.Command(os.Args[0], "-test.run=^TestUpstreamHTTPProxyChild$", "-test.count=1")
-	cmd.Env = upstreamHTTPProxyChildEnv(map[string]string{
-		"RENEWLET_TEST_UPSTREAM_PROXY_CHILD": "connect",
-		"HTTPS_PROXY":                        proxyURL,
-	})
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("proxy child failed: %v\n%s", err, output)
-	}
-	select {
-	case got := <-requests:
-		if got != "CONNECT api.telegram.org:443 HTTP/1.1" {
-			t.Fatalf("unexpected proxy request line %q", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected HTTPS request to reach proxy")
+	for _, envName := range []string{"HTTPS_PROXY", "https_proxy"} {
+		t.Run(envName, func(t *testing.T) {
+			proxyURL, requests := startHTTPProxyRecorder(t)
+			runUpstreamHTTPProxyChild(t, "connect", map[string]string{envName: proxyURL})
+			assertProxyReceivedTelegramConnect(t, requests)
+		})
 	}
 }
 
 func TestDefaultUpstreamHTTPClientHonorsNoProxyForTelegram(t *testing.T) {
-	// NO_PROXY 属于 Go 标准代理决策；这里用子进程锁住“配置了代理也可被排除”的行为。
-	cmd := exec.Command(os.Args[0], "-test.run=^TestUpstreamHTTPProxyChild$", "-test.count=1")
-	cmd.Env = upstreamHTTPProxyChildEnv(map[string]string{
-		"RENEWLET_TEST_UPSTREAM_PROXY_CHILD": "noproxy",
-		"HTTPS_PROXY":                        "http://127.0.0.1:9",
-		"NO_PROXY":                           "api.telegram.org",
-	})
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("NO_PROXY child failed: %v\n%s", err, output)
+	for _, envNames := range []struct {
+		proxy  string
+		bypass string
+	}{
+		{proxy: "HTTPS_PROXY", bypass: "NO_PROXY"},
+		{proxy: "https_proxy", bypass: "no_proxy"},
+	} {
+		t.Run(envNames.bypass, func(t *testing.T) {
+			runUpstreamHTTPProxyChild(t, "noproxy", map[string]string{
+				envNames.proxy:  "http://127.0.0.1:9",
+				envNames.bypass: "api.telegram.org",
+			})
+		})
 	}
+}
+
+func TestDefaultUpstreamHTTPClientPrefersUppercaseProxyEnvironment(t *testing.T) {
+	upperURL, upperRequests := startHTTPProxyRecorder(t)
+	lowerURL, lowerRequests := startHTTPProxyRecorder(t)
+	runUpstreamHTTPProxyChild(t, "connect", map[string]string{
+		"HTTPS_PROXY": upperURL,
+		"https_proxy": lowerURL,
+	})
+	assertProxyReceivedTelegramConnect(t, upperRequests)
+	select {
+	case got := <-lowerRequests:
+		t.Fatalf("expected uppercase HTTPS_PROXY to win, lowercase proxy received %q", got)
+	default:
+	}
+}
+
+func TestDefaultUpstreamHTTPClientPrefersUppercaseNoProxyEnvironment(t *testing.T) {
+	runUpstreamHTTPProxyChild(t, "proxied", map[string]string{
+		"HTTPS_PROXY": "http://127.0.0.1:9",
+		"NO_PROXY":    "example.com",
+		"no_proxy":    "api.telegram.org",
+	})
 }
 
 func TestUpstreamHTTPProxyChild(t *testing.T) {
@@ -86,19 +101,54 @@ func TestUpstreamHTTPProxyChild(t *testing.T) {
 			t.Fatal("expected fake proxy to abort the CONNECT request")
 		}
 	case "noproxy":
-		request, err := http.NewRequest(http.MethodGet, "https://api.telegram.org/botredacted/sendMessage", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		proxy, err := defaultUpstreamHTTPTransport().Proxy(request)
-		if err != nil {
-			t.Fatal(err)
-		}
+		proxy := upstreamHTTPProxyForTelegram(t)
 		if proxy != nil {
 			t.Fatalf("expected NO_PROXY to suppress proxy, got %s", proxy.Redacted())
 		}
+	case "proxied":
+		proxy := upstreamHTTPProxyForTelegram(t)
+		if proxy == nil {
+			t.Fatal("expected uppercase NO_PROXY to take precedence over lowercase no_proxy")
+		}
 	default:
 		t.Fatalf("unknown child mode %q", os.Getenv("RENEWLET_TEST_UPSTREAM_PROXY_CHILD"))
+	}
+}
+
+func runUpstreamHTTPProxyChild(t *testing.T, mode string, overrides map[string]string) {
+	t.Helper()
+	// ProxyFromEnvironment 缓存进程级配置；每组环境必须在独立子进程中验证。
+	cmd := exec.Command(os.Args[0], "-test.run=^TestUpstreamHTTPProxyChild$", "-test.count=1")
+	overrides["RENEWLET_TEST_UPSTREAM_PROXY_CHILD"] = mode
+	cmd.Env = upstreamHTTPProxyChildEnv(overrides)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("proxy child failed: %v\n%s", err, output)
+	}
+}
+
+func upstreamHTTPProxyForTelegram(t *testing.T) *url.URL {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, "https://api.telegram.org/botredacted/sendMessage", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy, err := defaultUpstreamHTTPTransport().Proxy(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return proxy
+}
+
+func assertProxyReceivedTelegramConnect(t *testing.T, requests <-chan string) {
+	t.Helper()
+	select {
+	case got := <-requests:
+		if got != "CONNECT api.telegram.org:443 HTTP/1.1" {
+			t.Fatalf("unexpected proxy request line %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected HTTPS request to reach proxy")
 	}
 }
 
