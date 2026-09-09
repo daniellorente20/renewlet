@@ -94,10 +94,14 @@ function isMissingMigrationsTable(output: string): boolean {
  * Reads the applied set through `wrangler d1 execute`.
  *
  * Chosen over the repo's D1 REST client because that client requires CLOUDFLARE_API_TOKEN and
- * CLOUDFLARE_ACCOUNT_ID as explicit environment variables, while wrangler also accepts whatever
- * session the surrounding environment already provides. Chosen over `d1 migrations list` because
- * that subcommand has been observed returning an account authorization error on this account while
- * `d1 execute` against the same database succeeded.
+ * CLOUDFLARE_ACCOUNT_ID as explicit environment variables, while wrangler works through whatever
+ * session the surrounding environment already provides.
+ *
+ * That difference is what makes this guard usable unattended. A Workers Builds container sets
+ * CLOUDFLARE_API_TOKEN itself, which wrangler reports in the build log as "The API Token is read
+ * from the CLOUDFLARE_API_TOKEN environment variable", so the guard authenticates with no build
+ * variables configured. Cloudflare's documentation does not mention that injection, and the
+ * dashboard reports no build variables, so it is recorded here rather than left to look like luck.
  */
 export function readAppliedMigrations(): { applied?: string[]; error?: string } {
   const result = spawnSync("pnpm", [
