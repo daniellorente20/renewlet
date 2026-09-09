@@ -461,7 +461,7 @@ export function SettingsAdvancedSections({
                   disabled={externalIntegrationsDisabled}
                   onClick={() => clearSecret("renewalWebhookUrl")}
                   title={t("settings.turnstileClearSecret")}
-                  aria-label={`${t("settings.turnstileClearSecret")}: renewalWebhookUrl`}
+                  aria-label={t("settings.turnstileClearSecret")}
                 >
                   <Trash2 aria-hidden="true" className="h-4 w-4" />
                 </Button>

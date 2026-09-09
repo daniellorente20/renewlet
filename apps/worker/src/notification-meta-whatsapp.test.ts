@@ -5,6 +5,7 @@ import {
   formatTemplateDate,
   isPermanentRenewalSendFailure,
   metaWhatsAppConfig,
+  normalizeRecipientPhone,
   normalizeTemplateParameter,
   sendMetaWhatsApp,
   templateParametersFor,
@@ -163,23 +164,39 @@ describe("sendMetaWhatsApp", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("treats a 4xx as final for this cycle and keeps the token out of the message", async () => {
+  it("keeps the token out of the message on a rejection", async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, {
       error: { message: `Bad request - please check your parameters (token ${TOKEN})` },
     }));
 
     const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
-    expect(isPermanentRenewalSendFailure(error)).toBe(true);
     expect(String(error)).toContain("400");
     expect(String(error)).not.toContain(TOKEN);
   });
 
-  it("treats a 5xx as retryable on the next scheduled pass", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(503, { error: { message: "upstream unavailable" } }));
-
+  it.each([
+    [400, "a malformed request"],
+    [404, "a template that does not exist"],
+    [422, "an unprocessable request"],
+  ])("treats %i as final, because repeating it unchanged cannot work", async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: "refused" } }));
     const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
+    expect(isPermanentRenewalSendFailure(error)).toBe(true);
+  });
+
+  it.each([
+    [401, "an expired or revoked token"],
+    [403, "a permission that can be granted"],
+    [408, "a timeout"],
+    [429, "rate limiting"],
+    [500, "a server error"],
+    [503, "an outage"],
+  ])("treats %i as retryable, so a fixable problem does not lose the warning", async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: "not now" } }));
+    const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
+    // 401 is the one that matters: a new token ten minutes later must still send the warning.
     expect(isPermanentRenewalSendFailure(error)).toBe(false);
-    expect(String(error)).toContain("503");
+    expect(String(error)).toContain(String(status));
   });
 
   it("treats a transport failure as retryable and redacted", async () => {
@@ -188,6 +205,30 @@ describe("sendMetaWhatsApp", () => {
     const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
     expect(isPermanentRenewalSendFailure(error)).toBe(false);
     expect(String(error)).not.toContain(TOKEN);
+  });
+});
+
+describe("recipient normalization", () => {
+  it("strips everything that is not a digit, however the number was typed", () => {
+    expect(normalizeRecipientPhone("+34 600 000 000")).toBe("34600000000");
+    expect(normalizeRecipientPhone("34-600-000-000")).toBe("34600000000");
+    expect(normalizeRecipientPhone("(34) 600 000 000")).toBe("34600000000");
+  });
+
+  it("sends the cleaned number, not the typed one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { messages: [{ id: "wamid.1" }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await sendMetaWhatsApp(CONFIG, { testPhone: "+34 600 000 000" }, annual(), "en-US");
+      expect(lastRequestBody(fetchMock)["to"]).toBe("34600000000");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("refuses a recipient with no digits at all", async () => {
+    await expect(sendMetaWhatsApp(CONFIG, { testPhone: "not a number" }, annual(), "en-US"))
+      .rejects.toThrow("WHATSAPP_RECIPIENT_NOT_CONFIGURED");
   });
 });
 

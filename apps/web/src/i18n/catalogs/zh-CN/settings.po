@@ -763,6 +763,11 @@ msgid "settings.help.webhook"
 msgstr "Webhook 说明"
 
 #. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:613
+msgid "settings.testPhone"
+msgstr "WhatsApp 续订提醒接收号码"
+
+#. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:270
 msgid "aiRecognition.thinking.openai.xhigh"
 msgstr "XHigh"
@@ -1565,6 +1570,11 @@ msgstr "同步有效订阅的未来续费和到期日期。"
 #: src/i18n/descriptors/settings.ts:140
 msgid "settings.builtInIconIndexJobStatusLabel"
 msgstr "后台任务"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:614
+msgid "settings.testPhonePlaceholder"
+msgstr "含国家代码，例如：34600000000"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:192
@@ -3237,11 +3247,6 @@ msgid "settings.cloudBackupCreateNow"
 msgstr "立即备份"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:613
-msgid "settings.testPhone"
-msgstr "第三方 API 测试号码"
-
-#. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:347
 msgid "settings.calendarFeedManage"
 msgstr "管理"
@@ -3350,6 +3355,11 @@ msgstr "续订提醒 Webhook 地址"
 #: src/i18n/descriptors/settings.ts:718
 msgid "settings.renewalWebhookTitle"
 msgstr "续订提醒 Webhook（独立通道）"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:615
+msgid "settings.testPhoneHelp"
+msgstr "续订提醒会发送到这个号码。留空则完全不发送 WhatsApp 提醒。号码只保留数字，国家代码必填。使用 Meta 测试发送号码时，收件人必须先在 Meta 后台手动登记。"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:590
@@ -3510,11 +3520,6 @@ msgstr "请先填写 API Key。"
 #: src/i18n/descriptors/settings.ts:697
 msgid "settings.telegramBotCommandsConfigMissing"
 msgstr "请先填写并保存 Bot Token 和 Chat ID。"
-
-#. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:614
-msgid "settings.testPhonePlaceholder"
-msgstr "请发送测试消息后验证，例如：86xxxxxx"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:341
@@ -3915,11 +3920,6 @@ msgstr "面向 Homarr、Homepage、Dashy 等仪表盘的服务图标库。"
 #: src/i18n/descriptors/settings.ts:185
 msgid "settings.builtInIconSource.selfhst.help"
 msgstr "面向自托管服务和仪表盘的图标库。"
-
-#. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:615
-msgid "settings.testPhoneHelp"
-msgstr "预留字段：部分渠道可能需要手机号/收件人 ID；当前版本不会影响已支持渠道。"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:21

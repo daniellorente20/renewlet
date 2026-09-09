@@ -33,6 +33,16 @@ const TEMPLATE_NAMES = {
 
 const MAX_RECORDED_ERROR_LENGTH = 300;
 
+/**
+ * Statuses that mean the request itself is wrong, so repeating it unchanged cannot succeed.
+ *
+ * Everything else non-2xx is retryable, and the distinction matters more than it looks. A revoked
+ * or expired token answers 401; treating that as final would consume the 40 day window of a
+ * three-figure insurance renewal on the first attempt and never send it again, even if a fresh
+ * token is in place ten minutes later. The warning would be lost silently.
+ */
+const PERMANENT_STATUSES = new Set([400, 404, 422]);
+
 export interface MetaWhatsAppConfig {
   token: string;
   phoneNumberId: string;
@@ -74,6 +84,16 @@ export function metaWhatsAppConfig(env: Env): MetaWhatsAppConfig | null {
  */
 export function normalizeTemplateParameter(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Keeps only digits, because the recipient field is free text.
+ *
+ * A number typed as `+34 600 000 000` would otherwise travel with its spaces and be refused with an
+ * error that never mentions the number's format.
+ */
+export function normalizeRecipientPhone(value: string): string {
+  return value.replace(/\D/g, "");
 }
 
 /** Templates were approved with samples like `15/10/2026`, so the ISO date is rendered for display. */
@@ -132,7 +152,7 @@ export function buildMetaTemplateMessage(event: RenewalUpcomingEvent, to: string
   return {
     messaging_product: "whatsapp",
     recipient_type: "individual",
-    to: normalizeTemplateParameter(to),
+    to,
     type: "template",
     template: {
       name: templateNameFor(event),
@@ -153,7 +173,7 @@ export async function sendMetaWhatsApp(
   event: RenewalUpcomingEvent,
   locale: AppLocale,
 ): Promise<void> {
-  const to = settings.testPhone.trim();
+  const to = normalizeRecipientPhone(settings.testPhone);
   if (!to) throw new RenewalSendError("WHATSAPP_RECIPIENT_NOT_CONFIGURED", true);
   const body = buildMetaTemplateMessage(assertSendableRenewalEvent(normalizeRenewalEventForTemplate(event)), to);
   const secrets = [config.token];
@@ -177,9 +197,7 @@ export async function sendMetaWhatsApp(
 
   const providerResponse = await upstreamProviderResponseFromFetchResponse(response, { secrets });
   const detail = providerMessageFromResponse(providerResponse) ?? response.statusText;
-  // 4xx is the request being refused: a bad template, an unregistered recipient, a dead token.
-  // Repeating it unchanged every day cannot help, so it ends this cycle instead of looping.
-  const permanent = response.status >= 400 && response.status < 500;
+  const permanent = PERMANENT_STATUSES.has(response.status);
   throw new RenewalSendError(
     `${SERVICE} ${response.status}: ${redactUpstreamSecrets(detail, secrets).trim().slice(0, MAX_RECORDED_ERROR_LENGTH)}`,
     permanent,

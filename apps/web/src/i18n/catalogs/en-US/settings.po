@@ -763,6 +763,11 @@ msgid "settings.help.webhook"
 msgstr "Webhook overview"
 
 #. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:613
+msgid "settings.testPhone"
+msgstr "WhatsApp renewal reminder number"
+
+#. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:270
 msgid "aiRecognition.thinking.openai.xhigh"
 msgstr "XHigh"
@@ -1565,6 +1570,11 @@ msgstr "Sync future renewal and expiration dates for active subscriptions."
 #: src/i18n/descriptors/settings.ts:140
 msgid "settings.builtInIconIndexJobStatusLabel"
 msgstr "Background job"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:614
+msgid "settings.testPhonePlaceholder"
+msgstr "With country code, e.g. 34600000000"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:192
@@ -3237,11 +3247,6 @@ msgid "settings.cloudBackupCreateNow"
 msgstr "Back up now"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:613
-msgid "settings.testPhone"
-msgstr "Third-party API test number"
-
-#. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:347
 msgid "settings.calendarFeedManage"
 msgstr "Manage"
@@ -3350,6 +3355,11 @@ msgstr "Renewal reminder webhook URL"
 #: src/i18n/descriptors/settings.ts:718
 msgid "settings.renewalWebhookTitle"
 msgstr "Renewal reminder webhook (separate channel)"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:615
+msgid "settings.testPhoneHelp"
+msgstr "Renewal reminders are sent to this number. Leave it empty and no WhatsApp reminder is sent at all. Only digits are kept, and the country code is required. On Meta's test sender the recipient must be registered by hand in Meta first."
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:590
@@ -3510,11 +3520,6 @@ msgstr "Fill in the API Key first."
 #: src/i18n/descriptors/settings.ts:697
 msgid "settings.telegramBotCommandsConfigMissing"
 msgstr "Fill in and save the Bot Token and Chat ID first."
-
-#. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:614
-msgid "settings.testPhonePlaceholder"
-msgstr "Send a test message and verify, e.g. 86xxxxxx"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:341
@@ -3915,11 +3920,6 @@ msgstr "Service icon library for dashboards such as Homarr, Homepage, and Dashy.
 #: src/i18n/descriptors/settings.ts:185
 msgid "settings.builtInIconSource.selfhst.help"
 msgstr "Icon library focused on self-hosted services and dashboards."
-
-#. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:615
-msgid "settings.testPhoneHelp"
-msgstr "Reserved field for channels that may need a phone number or recipient ID. It does not affect currently supported channels."
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:21

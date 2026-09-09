@@ -92,7 +92,7 @@ describe("SettingsScreen SMTP email settings", () => {
     expect(screen.getByLabelText("SMTP 端口")).toBeDisabled();
     expect(screen.getByLabelText("收件人邮箱")).toBeDisabled();
     expect(screen.getByRole("button", { name: "测试邮件通知" })).toBeDisabled();
-    expect(screen.getByLabelText("第三方 API 测试号码")).toBeDisabled();
+    expect(screen.getByLabelText("WhatsApp 续订提醒接收号码")).toBeDisabled();
     expect(screen.getByLabelText("Base URL")).toBeDisabled();
     expect(screen.getByLabelText("API Key")).toBeDisabled();
     for (const button of screen.getAllByRole("button", { name: "测试连接" })) {
@@ -554,7 +554,7 @@ describe("SettingsScreen SMTP email settings", () => {
 
     expect(container.querySelector(".app-page")).toBeInTheDocument();
     expect(container.querySelector("main")).not.toHaveClass("h5-bottom-bar-space");
-    const phoneInput = screen.getByLabelText("第三方 API 测试号码");
+    const phoneInput = screen.getByLabelText("WhatsApp 续订提醒接收号码");
     expect(phoneInput).toHaveAttribute("name", "testPhone");
     expect(phoneInput).toHaveAttribute("type", "tel");
     expect(phoneInput).toHaveAttribute("inputmode", "tel");
