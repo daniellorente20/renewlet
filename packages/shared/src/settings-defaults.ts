@@ -39,6 +39,7 @@ export function createDefaultAppSettings(options: DefaultSettingsOptions = {}): 
     telegramMessageFormat: "plain",
     notifyxApiKey: "",
     webhookUrl: "",
+    renewalWebhookUrl: "",
     webhookMethod: "POST",
     webhookHeaders: "",
     webhookPayload: "",

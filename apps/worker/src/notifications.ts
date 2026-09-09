@@ -36,6 +36,7 @@ import { accountContentLocale, serverFormat, serverText } from "./server-i18n";
 import { requireAuth } from "./auth";
 import { notificationChannelErrorDetails } from "./notification-errors";
 import { sendChannel, sendChannels } from "./notification-channel-send";
+import { runRenewalRemindersForUser } from "./renewal-reminder-run";
 import type { Env, NotificationJobRow } from "./types";
 import {
   NOTIFICATION_CRON_WINDOW_MINUTES,
@@ -278,11 +279,15 @@ async function runScheduledForUser(env: Env, userId: string, now = new Date()): 
   const occurrence = publicScheduleOccurrence(decision);
   // due 确认后才推进续订并读取 payload 候选，保持自动续订先于通知内容且不污染非 due 分钟。
   await renewAutoSubscriptionsForUserWithSettings(env, userId, settings, now);
-  const subscriptions = (await listNotificationScheduleCandidateSubscriptions(env, userId, {
+  const subscriptionRows = await listNotificationScheduleCandidateSubscriptions(env, userId, {
     scheduledLocalDate: occurrence.scheduledLocalDate,
     includeExpired: true,
     showExpired: settings.showExpired,
-  })).map(toApiSubscription);
+  });
+  const subscriptions = subscriptionRows.map(toApiSubscription);
+  // Its own channel, its own dedup table, its own failures. It must not be able to change what the
+  // summary webhook emits, because three downstream workflows read that payload's title/content.
+  await runRenewalRemindersForUser(env, userId, settings, occurrence.scheduledLocalDate, subscriptionRows, locale);
   // Cron 没有 request origin；邮件 CTA 只在手动请求能确定公开域名时生成。
   const outcome = await runCronForUser(env, userId, settings, subscriptions, occurrence, now, locale);
   if (outcome === "settled") {
@@ -310,7 +315,11 @@ async function runManualForUser(
   const now = new Date();
   // 通知正文生成前先幂等推进自动续订，避免已自动续订的旧日期继续进入 expired/renewal 内容。
   await renewAutoSubscriptionsForUserWithSettings(env, userId, settings, now);
-  const subscriptions = (await listSubscriptions(env, userId)).map(toApiSubscription);
+  const subscriptionRows = await listSubscriptions(env, userId);
+  const subscriptions = subscriptionRows.map(toApiSubscription);
+  // "Run now" drives the renewal event too, so it can be exercised without waiting for tomorrow's
+  // scheduled window. The dedup table keeps a second press from sending anything twice.
+  await runRenewalRemindersForUser(env, userId, settings, dateOnlyInZone(now, settings.timezone), subscriptionRows, locale);
   const message = buildDueMessage(now, settings, subscriptions, true, locale);
   if (!message.hasPayload && !force) {
     return { sent: false, summary: { attempted: [], succeeded: [], failed: [] }, subscriptionCount: subscriptions.length };

@@ -14,22 +14,22 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:738
+#: src/i18n/descriptors/settings.ts:741
 msgid "settings.dingtalkTemplateExampleCountTitle"
 msgstr "'{brand}' · '{itemCount}' 项提醒"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:735
+#: src/i18n/descriptors/settings.ts:738
 msgid "settings.dingtalkTemplateExampleKeywordTitle"
 msgstr "'{brand}' · '{title}'"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:732
+#: src/i18n/descriptors/settings.ts:735
 msgid "settings.dingtalkTemplateExampleDefaultTitle"
 msgstr "'{title}'"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:733
+#: src/i18n/descriptors/settings.ts:736
 msgid "settings.dingtalkTemplateExampleDefaultContent"
 msgstr "'{title}'\n"
 "\n"
@@ -38,7 +38,7 @@ msgstr "'{title}'\n"
 "'{timestamp}'"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:736
+#: src/i18n/descriptors/settings.ts:739
 msgid "settings.dingtalkTemplateExampleKeywordContent"
 msgstr "'{title}'\n"
 "\n"
@@ -154,7 +154,7 @@ msgid "settings.calendarFeedUrlFor"
 msgstr "「{name}」的日历订阅 URL"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:739
+#: src/i18n/descriptors/settings.ts:742
 msgid "settings.dingtalkTemplateExampleCountContent"
 msgstr "【'{title}'】\n"
 "\n"
@@ -163,12 +163,12 @@ msgstr "【'{title}'】\n"
 "发送时间：'{timestamp}'"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:752
+#: src/i18n/descriptors/settings.ts:755
 msgid "settings.wechatAtAll"
 msgstr "@全体成员"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:750
+#: src/i18n/descriptors/settings.ts:753
 msgid "settings.wechatPhones"
 msgstr "@手机号 (可选)"
 
@@ -193,7 +193,7 @@ msgid "aiRecognition.thinking.budget.4096"
 msgstr "4096 tokens"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:756
+#: src/i18n/descriptors/settings.ts:759
 msgid "settings.smtpSecureHelp"
 msgstr "465 通常开启；587/2525 通常关闭并使用 STARTTLS。Cloudflare Workers 不支持 25。"
 
@@ -568,7 +568,7 @@ msgid "settings.publicApiTokens"
 msgstr "Public API token 列表"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:779
+#: src/i18n/descriptors/settings.ts:782
 msgid "settings.pushplusToken"
 msgstr "PushPlus Token"
 
@@ -583,7 +583,7 @@ msgid "settings.cloudBackupS3Region"
 msgstr "Region"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:740
+#: src/i18n/descriptors/settings.ts:743
 msgid "settings.dingtalkKeywordPlaceholder"
 msgstr "Renewlet"
 
@@ -593,7 +593,7 @@ msgid "settings.cloudBackupProviderS3"
 msgstr "S3 兼容存储"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:773
+#: src/i18n/descriptors/settings.ts:776
 msgid "settings.serverchanSendKeyPlaceholder"
 msgstr "SCTxxxxxxxxxxxxxxxx 或 sctp123tabc"
 
@@ -613,7 +613,7 @@ msgid "settings.builtInIconSource.selfhst"
 msgstr "selfh.st icons"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:772
+#: src/i18n/descriptors/settings.ts:775
 msgid "settings.serverchanSendKey"
 msgstr "SendKey"
 
@@ -628,22 +628,22 @@ msgid "settings.help.serverchan"
 msgstr "Server酱 文档"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:758
+#: src/i18n/descriptors/settings.ts:761
 msgid "settings.smtpPassword"
 msgstr "SMTP 密码"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:753
+#: src/i18n/descriptors/settings.ts:756
 msgid "settings.smtpHost"
 msgstr "SMTP 服务器"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:757
+#: src/i18n/descriptors/settings.ts:760
 msgid "settings.smtpUser"
 msgstr "SMTP 用户名"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:754
+#: src/i18n/descriptors/settings.ts:757
 msgid "settings.smtpPort"
 msgstr "SMTP 端口"
 
@@ -743,7 +743,7 @@ msgid "settings.cloudBackupWebdavUrl"
 msgstr "WebDAV 地址"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:775
+#: src/i18n/descriptors/settings.ts:778
 msgid "settings.discordWebhookUrl"
 msgstr "Webhook URL"
 
@@ -761,6 +761,11 @@ msgstr "Webhook 地址"
 #: src/i18n/descriptors/settings.ts:665
 msgid "settings.help.webhook"
 msgstr "Webhook 说明"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:613
+msgid "settings.testPhone"
+msgstr "WhatsApp 续订提醒接收号码"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:270
@@ -831,6 +836,11 @@ msgstr "不显式控制"
 #: src/i18n/descriptors/settings.ts:642
 msgid "settings.currencyPolicy.defaultTitle"
 msgstr "不能禁用统计货币"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:720
+msgid "settings.renewalWebhookHelp"
+msgstr "与上方 Webhook 渠道无关的另一个地址。每条订阅在临近续订时单独发送一次 POST，包含服务名、日期、金额和价格变化；上方渠道发送的是每天一条的汇总。请勿把同一个地址填到两处：汇总的消费方读取的是 title/content，格式不同会静默失效。"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:111
@@ -933,7 +943,7 @@ msgid "settings.uploadedIconsDeleteBlockedByBoth"
 msgstr "仍被 {subscriptionCount} 个订阅和 {paymentMethodCount} 个支付方式使用，请先分别换掉 Logo 和支付方式图标。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:769
+#: src/i18n/descriptors/settings.ts:772
 msgid "settings.barkKeyHelp"
 msgstr "从 Bark iOS 应用中获取的设备 Key"
 
@@ -943,7 +953,7 @@ msgid "settings.notifyxHelp"
 msgstr "从 Notifyx 平台获取的 API Key"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:780
+#: src/i18n/descriptors/settings.ts:783
 msgid "settings.pushplusHelp"
 msgstr "从 PushPlus 获取的消息令牌或用户令牌，Renewlet 使用文本模板发送。"
 
@@ -963,7 +973,7 @@ msgid "settings.cloudBackupNeverBackedUp"
 msgstr "从未备份"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:719
+#: src/i18n/descriptors/settings.ts:722
 msgid "settings.dingtalkWebhookHelp"
 msgstr "从钉钉群自定义机器人获取，Renewlet 会按钉钉固定消息结构发送。"
 
@@ -983,7 +993,7 @@ msgid "settings.exchangeRateProviderHelp"
 msgstr "优先使用所选来源；失败时会自动尝试其他远端来源，少量缺失币种会用备用汇率补齐。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:755
+#: src/i18n/descriptors/settings.ts:758
 msgid "settings.smtpSecure"
 msgstr "使用 TLS 直连"
 
@@ -1003,12 +1013,12 @@ msgid "aiRecognition.modelPlaceholder"
 msgstr "例如 gpt-5.1、gemini-3-pro、claude-sonnet-4-5"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:721
+#: src/i18n/descriptors/settings.ts:724
 msgid "settings.dingtalkTitleTemplatePlaceholder"
 msgstr "例如：'{brand}' · '{title}'"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:723
+#: src/i18n/descriptors/settings.ts:726
 msgid "settings.dingtalkContentTemplatePlaceholder"
 msgstr "例如：'{title}'\n"
 "\n"
@@ -1192,7 +1202,7 @@ msgid "settings.publicStatusCurrency"
 msgstr "公开页统计货币"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:734
+#: src/i18n/descriptors/settings.ts:737
 msgid "settings.dingtalkTemplateExampleKeyword"
 msgstr "关键词安全"
 
@@ -1437,7 +1447,7 @@ msgid "settings.mfaRecoveryRemaining"
 msgstr "剩余恢复码：{count} 个"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:743
+#: src/i18n/descriptors/settings.ts:746
 msgid "settings.dingtalkSecret"
 msgstr "加签密钥（可选）"
 
@@ -1512,7 +1522,7 @@ msgid "settings.subscriptionPriceReferenceCurrency"
 msgstr "单订阅参考货币"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:759
+#: src/i18n/descriptors/settings.ts:762
 msgid "settings.smtpFrom"
 msgstr "发件人"
 
@@ -1522,7 +1532,7 @@ msgid "settings.webhookPayload"
 msgstr "发送负载 (JSON格式，可选)"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:724
+#: src/i18n/descriptors/settings.ts:727
 msgid "settings.dingtalkTemplateHelp"
 msgstr "变量：'{brand}'、'{keyword}'、'{title}'、'{content}'、'{timestamp}'、'{itemCount}'。这里只改标题和正文，不是 JSON body 模板；Renewlet 仍会生成钉钉官方 payload。"
 
@@ -1537,7 +1547,7 @@ msgid "settings.cloudBackupPathHelp"
 msgstr "只填写目录前缀，不要包含 .. 或文件名。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:776
+#: src/i18n/descriptors/settings.ts:779
 msgid "settings.discordWebhookHelp"
 msgstr "只支持 Discord 官方 Webhook URL，发送时会禁止 @everyone、用户和角色提及。"
 
@@ -1560,6 +1570,11 @@ msgstr "同步有效订阅的未来续费和到期日期。"
 #: src/i18n/descriptors/settings.ts:140
 msgid "settings.builtInIconIndexJobStatusLabel"
 msgstr "后台任务"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:614
+msgid "settings.testPhonePlaceholder"
+msgstr "含国家代码，例如：34600000000"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:192
@@ -1592,7 +1607,7 @@ msgid "settings.currencyManagerDescription"
 msgstr "启用或禁用可用的货币选项（当前汇率来源共同支持 146 种货币）"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:771
+#: src/i18n/descriptors/settings.ts:774
 msgid "settings.barkSilentHelp"
 msgstr "启用该选项后推送通知将不会发出声音"
 
@@ -1607,7 +1622,7 @@ msgid "settings.mfaEnableFailed"
 msgstr "启用身份验证器失败"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:760
+#: src/i18n/descriptors/settings.ts:763
 msgid "settings.smtpReplyTo"
 msgstr "回复地址"
 
@@ -1637,7 +1652,7 @@ msgid "settings.builtInIconIndexRefreshFailed"
 msgstr "图标索引更新失败"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:746
+#: src/i18n/descriptors/settings.ts:749
 msgid "settings.wechatHelp"
 msgstr "在企业微信群里添加「群机器人」后获取。"
 
@@ -1662,7 +1677,7 @@ msgid "settings.showExpired"
 msgstr "在通知中一起发送已过期订阅"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:728
+#: src/i18n/descriptors/settings.ts:731
 msgid "settings.dingtalkTemplateExampleApplyNamed"
 msgstr "填入{name}模板"
 
@@ -1707,7 +1722,7 @@ msgid "settings.channel.wechatTodo"
 msgstr "填写企业微信机器人 Webhook URL"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:744
+#: src/i18n/descriptors/settings.ts:747
 msgid "settings.dingtalkSecretHelp"
 msgstr "填写后发送前自动生成 timestamp/sign，并覆盖 URL 中已有的签名参数。"
 
@@ -1782,12 +1797,12 @@ msgid "settings.appearance"
 msgstr "外观设置"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:751
+#: src/i18n/descriptors/settings.ts:754
 msgid "settings.wechatPhonesHelp"
 msgstr "多个手机号用逗号/换行分隔；仅在消息类型为“文本”时生效。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:762
+#: src/i18n/descriptors/settings.ts:765
 msgid "settings.multipleRecipients"
 msgstr "多个收件人"
 
@@ -1997,7 +2012,7 @@ msgid "settings.appSettingsScope"
 msgstr "应用设置"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:763
+#: src/i18n/descriptors/settings.ts:766
 msgid "settings.multipleRecipientsHelp"
 msgstr "开启后可用逗号/换行分隔多个邮箱。"
 
@@ -2172,7 +2187,7 @@ msgid "settings.cloudBackupUpstreamDescription"
 msgstr "接口返回的原始响应。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:765
+#: src/i18n/descriptors/settings.ts:768
 msgid "settings.recipientEmailHelp"
 msgstr "接收通知的目标邮箱地址（默认回显当前登录邮箱）。"
 
@@ -2257,7 +2272,7 @@ msgid "settings.uploadedIconsIconDescription"
 msgstr "支付方式管理里，点「上传」添加的图标。用「搜索」选的在线图标不在这里。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:774
+#: src/i18n/descriptors/settings.ts:777
 msgid "settings.serverchanHelp"
 msgstr "支持 Server酱 Turbo 与 Server酱³ SendKey，默认使用官方推送通道。"
 
@@ -2267,7 +2282,7 @@ msgid "settings.webhookPayloadHelp"
 msgstr "支持变量: '{title}', '{content}', '{timestamp}'，使用这些变量会自动替换为发送内容"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:764
+#: src/i18n/descriptors/settings.ts:767
 msgid "settings.recipientEmail"
 msgstr "收件人邮箱"
 
@@ -2307,12 +2322,12 @@ msgid "settings.customConfigScope"
 msgstr "数据配置"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:737
+#: src/i18n/descriptors/settings.ts:740
 msgid "settings.dingtalkTemplateExampleCount"
 msgstr "数量摘要"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:748
+#: src/i18n/descriptors/settings.ts:751
 msgid "settings.textMessage"
 msgstr "文本消息"
 
@@ -2612,7 +2627,7 @@ msgid "settings.unsavedChanges"
 msgstr "有未保存更改"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:766
+#: src/i18n/descriptors/settings.ts:769
 msgid "settings.barkServer"
 msgstr "服务器地址"
 
@@ -2757,12 +2772,12 @@ msgid "aiRecognition.thinkingRunHelp"
 msgstr "本次识别可临时覆盖设置页默认值。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:718
+#: src/i18n/descriptors/settings.ts:721
 msgid "settings.dingtalkWebhookUrl"
 msgstr "机器人 Webhook URL"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:745
+#: src/i18n/descriptors/settings.ts:748
 msgid "settings.wechatUrl"
 msgstr "机器人 Webhook URL"
 
@@ -2777,12 +2792,12 @@ msgid "settings.telegramBotTokenLabel"
 msgstr "机器人令牌"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:778
+#: src/i18n/descriptors/settings.ts:781
 msgid "settings.discordBotAvatarUrl"
 msgstr "机器人头像 URL（可选）"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:777
+#: src/i18n/descriptors/settings.ts:780
 msgid "settings.discordBotUsername"
 msgstr "机器人用户名（可选）"
 
@@ -2812,7 +2827,7 @@ msgid "settings.cloudBackupSnapshotsViewAll"
 msgstr "查看全部 ({count})"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:726
+#: src/i18n/descriptors/settings.ts:729
 msgid "settings.dingtalkTemplateExamplesOpen"
 msgstr "查看模板示例"
 
@@ -2827,7 +2842,7 @@ msgid "settings.cloudBackupUpstreamOpen"
 msgstr "查看错误详情"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:729
+#: src/i18n/descriptors/settings.ts:732
 msgid "settings.dingtalkTemplateExampleTitle"
 msgstr "标题"
 
@@ -2837,7 +2852,7 @@ msgid "settings.telegramMessageFormatHtmlDescription"
 msgstr "标题和关键数字更醒目，适合快速扫读。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:720
+#: src/i18n/descriptors/settings.ts:723
 msgid "settings.dingtalkTitleTemplate"
 msgstr "标题模板"
 
@@ -2887,7 +2902,7 @@ msgid "aiRecognition.thinking.modelDefault"
 msgstr "模型默认"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:725
+#: src/i18n/descriptors/settings.ts:728
 msgid "settings.dingtalkTemplateExamples"
 msgstr "模板示例"
 
@@ -2932,12 +2947,12 @@ msgid "aiRecognition.modelListLoading"
 msgstr "正在获取模型列表..."
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:730
+#: src/i18n/descriptors/settings.ts:733
 msgid "settings.dingtalkTemplateExampleContent"
 msgstr "正文"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:722
+#: src/i18n/descriptors/settings.ts:725
 msgid "settings.dingtalkContentTemplate"
 msgstr "正文模板"
 
@@ -2987,52 +3002,52 @@ msgid "aiRecognition.modelSelectEmpty"
 msgstr "没有可选择的模型。请确认 Base URL / API Key 已填写，或切换到手动输入。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:783
+#: src/i18n/descriptors/settings.ts:786
 msgid "settings.testChannel.webhook"
 msgstr "测试 {channel}"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:781
+#: src/i18n/descriptors/settings.ts:784
 msgid "settings.testChannel.telegram"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:782
+#: src/i18n/descriptors/settings.ts:785
 msgid "settings.testChannel.notifyx"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:784
+#: src/i18n/descriptors/settings.ts:787
 msgid "settings.testChannel.dingtalk"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:785
+#: src/i18n/descriptors/settings.ts:788
 msgid "settings.testChannel.wechat"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:787
+#: src/i18n/descriptors/settings.ts:790
 msgid "settings.testChannel.bark"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:788
+#: src/i18n/descriptors/settings.ts:791
 msgid "settings.testChannel.serverchan"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:789
+#: src/i18n/descriptors/settings.ts:792
 msgid "settings.testChannel.discord"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:790
+#: src/i18n/descriptors/settings.ts:793
 msgid "settings.testChannel.pushplus"
 msgstr "测试 {channel} 通知"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:786
+#: src/i18n/descriptors/settings.ts:789
 msgid "settings.testChannel.email"
 msgstr "测试{channel}"
 
@@ -3047,7 +3062,7 @@ msgid "settings.cloudBackupTesting"
 msgstr "测试中..."
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:791
+#: src/i18n/descriptors/settings.ts:794
 msgid "settings.testing"
 msgstr "测试中..."
 
@@ -3062,12 +3077,12 @@ msgid "settings.cloudBackupTest"
 msgstr "测试连接"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:749
+#: src/i18n/descriptors/settings.ts:752
 msgid "settings.wechatModeTag"
 msgstr "消息前追加「Renewlet」标记"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:747
+#: src/i18n/descriptors/settings.ts:750
 msgid "settings.messageType"
 msgstr "消息类型"
 
@@ -3097,7 +3112,7 @@ msgid "settings.telegramBotCommandsDemoDisabled"
 msgstr "演示模式下不能安装外部 Telegram 命令。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:792
+#: src/i18n/descriptors/settings.ts:795
 msgid "settings.accountSecurityDemoDisabled"
 msgstr "演示模式仅供浏览，不能修改身份验证器或通行密钥。"
 
@@ -3232,11 +3247,6 @@ msgid "settings.cloudBackupCreateNow"
 msgstr "立即备份"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:613
-msgid "settings.testPhone"
-msgstr "第三方 API 测试号码"
-
-#. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:347
 msgid "settings.calendarFeedManage"
 msgstr "管理"
@@ -3337,6 +3347,21 @@ msgid "settings.publicStatusCurrencyInherit"
 msgstr "继承统计货币（当前 {currency}）"
 
 #. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:719
+msgid "settings.renewalWebhookUrlLabel"
+msgstr "续订提醒 Webhook 地址"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:718
+msgid "settings.renewalWebhookTitle"
+msgstr "续订提醒 Webhook（独立通道）"
+
+#. js-lingui-explicit-id
+#: src/i18n/descriptors/settings.ts:615
+msgid "settings.testPhoneHelp"
+msgstr "续订提醒会发送到这个号码。留空则完全不发送 WhatsApp 提醒。号码只保留数字，国家代码必填。使用 Meta 测试发送号码时，收件人必须先在 Meta 后台手动登记。"
+
+#. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:590
 msgid "settings.cachePolicy"
 msgstr "缓存策略"
@@ -3347,7 +3372,7 @@ msgid "settings.telegramChatIdLabel"
 msgstr "聊天 ID"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:741
+#: src/i18n/descriptors/settings.ts:744
 msgid "settings.dingtalkKeyword"
 msgstr "自定义关键词（可选）"
 
@@ -3417,7 +3442,7 @@ msgid "settings.notificationReminderDaysHelp"
 msgstr "订阅选择“默认值从设置中获取”时，会使用这里的提前天数。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:768
+#: src/i18n/descriptors/settings.ts:771
 msgid "settings.barkKey"
 msgstr "设备 Key"
 
@@ -3495,11 +3520,6 @@ msgstr "请先填写 API Key。"
 #: src/i18n/descriptors/settings.ts:697
 msgid "settings.telegramBotCommandsConfigMissing"
 msgstr "请先填写并保存 Bot Token 和 Chat ID。"
-
-#. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:614
-msgid "settings.testPhonePlaceholder"
-msgstr "请发送测试消息后验证，例如：86xxxxxx"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:341
@@ -3672,7 +3692,7 @@ msgid "settings.builtInIconSourcesDialogDescription"
 msgstr "选择 Logo 和支付方式图标搜索可使用的来源；在线 App 图标只用于手动 Logo 搜索。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:727
+#: src/i18n/descriptors/settings.ts:730
 msgid "settings.dingtalkTemplateExamplesDescription"
 msgstr "选择一个示例后仍可继续编辑。"
 
@@ -3767,7 +3787,7 @@ msgid "settings.onlineIconSource.appStore.help"
 msgstr "通过 Renewlet 后端查询 Apple Search API，返回应用图标 URL；默认只查 US，不会下载或转存图片。"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:761
+#: src/i18n/descriptors/settings.ts:764
 msgid "settings.smtpHelp"
 msgstr "邮件通知使用当前账号 SMTP；留空不会使用部署环境 fallback。"
 
@@ -3852,7 +3872,7 @@ msgid "settings.calendarFeedRetry"
 msgstr "重试"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:742
+#: src/i18n/descriptors/settings.ts:745
 msgid "settings.dingtalkKeywordHelp"
 msgstr "钉钉关键词校验要求关键词出现在消息正文中；如果填写 Test1 这类随机词，通知里也会显示它。建议使用 Renewlet、订阅提醒、续费这类自然关键词；隐藏式安全校验请使用加签。"
 
@@ -3887,7 +3907,7 @@ msgid "settings.calendarFeedRegenerated"
 msgstr "链接已重新生成"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:770
+#: src/i18n/descriptors/settings.ts:773
 msgid "settings.barkSilent"
 msgstr "静音推送"
 
@@ -3900,11 +3920,6 @@ msgstr "面向 Homarr、Homepage、Dashy 等仪表盘的服务图标库。"
 #: src/i18n/descriptors/settings.ts:185
 msgid "settings.builtInIconSource.selfhst.help"
 msgstr "面向自托管服务和仪表盘的图标库。"
-
-#. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:615
-msgid "settings.testPhoneHelp"
-msgstr "预留字段：部分渠道可能需要手机号/收件人 ID；当前版本不会影响已支持渠道。"
 
 #. js-lingui-explicit-id
 #: src/i18n/descriptors/settings.ts:21
@@ -3937,7 +3952,7 @@ msgid "settings.defaultCurrencyHelp"
 msgstr "首页和统计页面的金额将统一换算为此货币显示，单个订阅仍显示其原始货币"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:767
+#: src/i18n/descriptors/settings.ts:770
 msgid "settings.barkServerHelp"
 msgstr "默认使用官方服务 `https://api.day.app`；如你自建 Bark 服务，请填写你的服务地址。"
 
@@ -3962,7 +3977,7 @@ msgid "settings.notificationReminderDays"
 msgstr "默认提前提醒天数"
 
 #. js-lingui-explicit-id
-#: src/i18n/descriptors/settings.ts:731
+#: src/i18n/descriptors/settings.ts:734
 msgid "settings.dingtalkTemplateExampleDefault"
 msgstr "默认等价"
 

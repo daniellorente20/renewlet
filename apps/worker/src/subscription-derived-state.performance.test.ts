@@ -290,6 +290,9 @@ function toSubscriptionRow(
     cost_sharing_collection_reminder_enabled: 0,
     cost_sharing_next_collection_reminder_date: null,
     extra_json: "{}",
+    previous_price: null,
+    previous_price_currency: null,
+    previous_price_changed_at: null,
     created_at: record.createdAt,
     updated_at: record.updatedAt,
   };

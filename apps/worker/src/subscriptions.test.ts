@@ -10,7 +10,7 @@ import { isValidDateOnly, type DateOnly } from "@renewlet/shared/runtime";
 import type { ApiSubscription } from "@renewlet/shared/schemas/subscriptions";
 import { readSuccessData } from "./api-test-helpers";
 import { toApiSubscription, toApiSubscriptionCollectionItem } from "./db";
-import { normalizeSubscriptionBodyForStorage, toSubscriptionRow, updateSubscription, type SubscriptionBody } from "./subscriptions";
+import { normalizeSubscriptionBodyForStorage, toSubscriptionRow, updateSubscription, withPreviousPriceCapture, type SubscriptionBody } from "./subscriptions";
 import type { Env, SubscriptionRow } from "./types";
 
 const authMocks = vi.hoisted(() => ({
@@ -499,5 +499,84 @@ describe("Cloudflare subscription mapper", () => {
     expect(cycleFieldsMigration).toContain("SET custom_cycle_unit = 'day'");
     expect(cycleFieldsMigration).toContain("WHERE billing_cycle != 'custom'");
     expect(cycleFieldsMigration).toContain("WHERE billing_cycle != 'one-time'");
+  });
+});
+
+describe("withPreviousPriceCapture", () => {
+  const CHANGED_AT = "2026-09-08T10:00:00.000Z";
+  const base: SubscriptionRow = {
+    id: "sub_adobe",
+    user_id: "usr_owner",
+    name: "Adobe Creative Cloud",
+    logo: null,
+    price: "199",
+    currency: "EUR",
+    billing_cycle: "annual",
+    custom_days: null,
+    custom_cycle_unit: null,
+    one_time_term_count: null,
+    one_time_term_unit: null,
+    category: "software",
+    status: "active",
+    pinned: 0,
+    public_hidden: 0,
+    payment_method: null,
+    start_date: "2025-10-15",
+    next_billing_date: "2026-10-15",
+    auto_renew: 0,
+    auto_calculate_next_billing_date: 1,
+    trial_end_date: null,
+    website: null,
+    notes: null,
+    tags_json: "[]",
+    reminder_days: -1,
+    repeat_reminder_enabled: 0,
+    repeat_reminder_interval: "1h",
+    repeat_reminder_window: "72h",
+    cost_sharing_json: "{}",
+    cost_sharing_collection_reminder_enabled: 0,
+    cost_sharing_next_collection_reminder_date: null,
+    extra_json: "{}",
+    previous_price: null,
+    previous_price_currency: null,
+    previous_price_changed_at: null,
+    created_at: "2025-10-15T00:00:00.000Z",
+    updated_at: "2025-10-15T00:00:00.000Z",
+  };
+
+  it("records the amount charged before a price rise", () => {
+    const captured = withPreviousPriceCapture(base, { ...base, price: "239.88" }, CHANGED_AT);
+    expect(captured.previous_price).toBe("199");
+    expect(captured.previous_price_currency).toBe("EUR");
+    expect(captured.previous_price_changed_at).toBe(CHANGED_AT);
+  });
+
+  it("leaves the capture alone when only unrelated fields change", () => {
+    const renamed = withPreviousPriceCapture({ ...base, previous_price: "149", previous_price_currency: "EUR", previous_price_changed_at: "2025-11-01T00:00:00.000Z" }, { ...base, name: "Adobe CC", previous_price: null, previous_price_currency: null, previous_price_changed_at: null }, CHANGED_AT);
+    // Renaming a subscription must not erase an earlier price change, or the renewal event would
+    // report no change for a cycle whose price really did move.
+    expect(renamed.previous_price).toBe("149");
+    expect(renamed.previous_price_currency).toBe("EUR");
+    // The stamp must not move either, or a months-old rise would look like it happened today and
+    // the monthly reminder would fire again every cycle.
+    expect(renamed.previous_price_changed_at).toBe("2025-11-01T00:00:00.000Z");
+  });
+
+  it("treats a currency switch as a price change", () => {
+    const captured = withPreviousPriceCapture(base, { ...base, currency: "USD" }, CHANGED_AT);
+    expect(captured.previous_price).toBe("199");
+    expect(captured.previous_price_currency).toBe("EUR");
+  });
+
+  it("overwrites an older capture with the amount from the cycle just ended", () => {
+    const twice = withPreviousPriceCapture({ ...base, price: "239.88", previous_price: "199", previous_price_currency: "EUR" }, { ...base, price: "259" }, CHANGED_AT);
+    expect(twice.previous_price).toBe("239.88");
+  });
+
+  it("leaves a brand new subscription with nothing to compare against", () => {
+    const created = toSubscriptionRow("sub_new", "usr_owner", subscriptionBody(), "2026-09-08T00:00:00.000Z", "2026-09-08T00:00:00.000Z");
+    expect(created.previous_price).toBeNull();
+    expect(created.previous_price_currency).toBeNull();
+    expect(created.previous_price_changed_at).toBeNull();
   });
 });

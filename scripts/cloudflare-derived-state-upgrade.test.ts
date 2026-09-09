@@ -107,7 +107,10 @@ function openDerivedDatabase({ v2Marker = true }: { v2Marker?: boolean } = {}): 
       cost_sharing_next_collection_reminder_date TEXT,
       extra_json TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      previous_price TEXT,
+      previous_price_currency TEXT,
+      previous_price_changed_at TEXT
     );
     CREATE TABLE subscription_list_index (
       subscription_id TEXT PRIMARY KEY REFERENCES subscriptions(id) ON DELETE CASCADE,

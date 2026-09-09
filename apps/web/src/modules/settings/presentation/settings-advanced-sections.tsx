@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { Activity, Coins, CreditCard, FolderKanban, Settings2 } from "lucide-react";
+import { Activity, Coins, CreditCard, FolderKanban, Settings2, Trash2 } from "lucide-react";
 import { DeferredImportDataDialog } from "@/components/import-data-dialog-loader";
 import { RawErrorResponseDialog } from "@/components/raw-error-response-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { FormField, FormFieldRow } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -443,6 +445,46 @@ export function SettingsAdvancedSections({
               secretStatus={secretStatus}
               onClearSecret={clearSecret}
             />
+          </div>
+
+          <div className="rounded-lg border border-border bg-secondary/30 p-4" data-testid="renewal-webhook-section">
+            <h3 className="text-base font-semibold text-foreground">{t("settings.renewalWebhookTitle")}</h3>
+            <p className="mt-1 mb-4 text-xs text-muted-foreground">{t("settings.renewalWebhookHelp")}</p>
+            {secretStatus?.renewalWebhookUrl?.configured ? (
+              <div className="mb-4 inline-flex items-center gap-1.5" data-testid="renewal-webhook-configured">
+                <Badge variant="secondary">{t("settings.turnstileSecretConfigured")}</Badge>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  disabled={externalIntegrationsDisabled}
+                  onClick={() => clearSecret("renewalWebhookUrl")}
+                  title={t("settings.turnstileClearSecret")}
+                  aria-label={t("settings.turnstileClearSecret")}
+                >
+                  <Trash2 aria-hidden="true" className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : null}
+            <div className="grid gap-2">
+              <Label htmlFor="renewalWebhookUrl">{t("settings.renewalWebhookUrlLabel")}</Label>
+              <Input
+                id="renewalWebhookUrl"
+                name="renewalWebhookUrl"
+                data-testid="renewal-webhook-input"
+                type="password"
+                enterKeyHint="done"
+                autoCapitalize="none"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="https://your-renewal-endpoint.com/path"
+                value={settings.renewalWebhookUrl}
+                disabled={externalIntegrationsDisabled}
+                onChange={(event) => updateSetting("renewalWebhookUrl", event.target.value)}
+                className="border-border bg-secondary"
+              />
+            </div>
           </div>
 
           <div className="grid gap-2">

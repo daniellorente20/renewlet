@@ -74,6 +74,7 @@ export const EXTERNAL_INTEGRATION_SETTING_KEYS = new Set<keyof AppSettings>([
   "webhookMethod",
   "webhookHeaders",
   "webhookPayload",
+  "renewalWebhookUrl",
   "dingtalkWebhookUrl",
   "dingtalkSecret",
   "dingtalkKeyword",

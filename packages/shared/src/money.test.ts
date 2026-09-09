@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalizeMoneyString, moneyStringSchema } from "./money";
+import { canonicalizeMoneyString, formatMoneyWithCurrency, moneyStringSchema } from "./money";
 
 describe("moneyStringSchema", () => {
   it("canonicalizes decimal strings at the shared write boundary", () => {
@@ -14,5 +14,25 @@ describe("moneyStringSchema", () => {
     expect(() => moneyStringSchema.parse(".5")).toThrow();
     expect(() => moneyStringSchema.parse("1.1234567")).toThrow();
     expect(() => moneyStringSchema.parse("1000000000.000001")).toThrow();
+  });
+});
+
+describe("formatMoneyWithCurrency", () => {
+  it("renders two decimals and the currency code on one line", () => {
+    expect(formatMoneyWithCurrency("239.88", "EUR", "es-ES")).toBe("239,88 EUR");
+    expect(formatMoneyWithCurrency("8.99", "EUR", "es-ES")).toBe("8,99 EUR");
+  });
+
+  it("pads whole amounts so a price note never reads '199 EUR'", () => {
+    expect(formatMoneyWithCurrency("199", "EUR", "es-ES")).toBe("199,00 EUR");
+    expect(formatMoneyWithCurrency("21", "EUR", "es-ES")).toBe("21,00 EUR");
+  });
+
+  it("never emits whitespace that a message template would reject", () => {
+    for (const currency of ["EUR", "USD", "JPY"]) {
+      const formatted = formatMoneyWithCurrency("1234.5", currency, "es-ES");
+      expect(formatted).not.toMatch(/[\n\r\t]|\s{4,}| /);
+      expect(formatted.trim()).toBe(formatted);
+    }
   });
 });

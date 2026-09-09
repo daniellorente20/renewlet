@@ -63,6 +63,9 @@ const subscriptionsColumns = [
   column("cost_sharing_collection_reminder_enabled", 1, "0", 0, "INTEGER"),
   column("cost_sharing_next_collection_reminder_date"), column("extra_json", 1, "'{}'"),
   column("created_at", 1), column("updated_at", 1),
+  // Appended by 0041, so they sit after created_at/updated_at in cid order, not in logical order.
+  column("previous_price"), column("previous_price_currency"),
+  column("previous_price_changed_at"),
 ] as const;
 
 const listIndexColumns = [
