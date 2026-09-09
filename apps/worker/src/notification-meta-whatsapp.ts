@@ -34,14 +34,59 @@ const TEMPLATE_NAMES = {
 const MAX_RECORDED_ERROR_LENGTH = 300;
 
 /**
- * Statuses that mean the request itself is wrong, so repeating it unchanged cannot succeed.
+ * Error codes for which repeating the identical request can never succeed.
  *
- * Everything else non-2xx is retryable, and the distinction matters more than it looks. A revoked
- * or expired token answers 401; treating that as final would consume the 40 day window of a
- * three-figure insurance renewal on the first attempt and never send it again, even if a fresh
- * token is in place ten minutes later. The warning would be lost silently.
+ * The test is narrow on purpose: permanent means the request itself is wrong, not merely that
+ * something has to be fixed before it works. Anything a human can put right without altering the
+ * request stays retryable, because the two mistakes cost wildly different amounts. A wrong
+ * "retryable" costs one attempt a day; a wrong "permanent" destroys the reminder window outright.
+ *
+ * Descriptions are quoted from Meta's Cloud API error reference.
+ */
+const PERMANENT_ERROR_CODES = new Set([
+  100,    // "The request included one or more unsupported or misspelled parameters"
+  131008, // "The request is missing a required parameter"
+  131009, // "One or more parameter values are invalid"
+  132000, // parameter count "did not match the number of variable parameters defined in the template"
+  132001, // "The template does not exist in the specified language or the template has not been approved"
+  132005, // "Translated text is too long"
+  132007, // "Template content violates a WhatsApp policy"
+  132012, // "Variable parameter values formatted incorrectly"
+]);
+
+/**
+ * Fallback only, used when the body carries no parseable error code.
+ *
+ * Meta answers 400 for causes with nothing in common: a malformed body, a recipient that is not on
+ * the allow list, a rate limit. The status alone is not the signal, so it decides nothing while a
+ * code is available.
  */
 const PERMANENT_STATUSES = new Set([400, 404, 422]);
+
+/** Reads Meta's numeric error code out of an error body, if there is one to read. */
+export function metaErrorCode(body: string | null | undefined): number | null {
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: unknown } };
+    const code = parsed.error?.code;
+    return typeof code === "number" && Number.isInteger(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a rejection is final for this cycle.
+ *
+ * An unrecognised code is retryable. That default is the whole point: 131030, the recipient not
+ * being on the allow list, is not even in Meta's published reference, and treating it as final
+ * consumed two windows on their first attempt for a problem that a single allow-list entry fixes.
+ */
+export function isPermanentMetaFailure(status: number, body: string | null | undefined): boolean {
+  const code = metaErrorCode(body);
+  if (code !== null) return PERMANENT_ERROR_CODES.has(code);
+  return PERMANENT_STATUSES.has(status);
+}
 
 export interface MetaWhatsAppConfig {
   token: string;
@@ -197,7 +242,7 @@ export async function sendMetaWhatsApp(
 
   const providerResponse = await upstreamProviderResponseFromFetchResponse(response, { secrets });
   const detail = providerMessageFromResponse(providerResponse) ?? response.statusText;
-  const permanent = PERMANENT_STATUSES.has(response.status);
+  const permanent = isPermanentMetaFailure(response.status, providerResponse.body);
   throw new RenewalSendError(
     `${SERVICE} ${response.status}: ${redactUpstreamSecrets(detail, secrets).trim().slice(0, MAX_RECORDED_ERROR_LENGTH)}`,
     permanent,

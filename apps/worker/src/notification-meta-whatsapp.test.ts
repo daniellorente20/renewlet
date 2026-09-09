@@ -3,7 +3,9 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   buildMetaTemplateMessage,
   formatTemplateDate,
+  isPermanentMetaFailure,
   isPermanentRenewalSendFailure,
+  metaErrorCode,
   metaWhatsAppConfig,
   normalizeRecipientPhone,
   normalizeTemplateParameter,
@@ -175,26 +177,37 @@ describe("sendMetaWhatsApp", () => {
   });
 
   it.each([
-    [400, "a malformed request"],
-    [404, "a template that does not exist"],
-    [422, "an unprocessable request"],
-  ])("treats %i as final, because repeating it unchanged cannot work", async (status) => {
-    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: "refused" } }));
+    [132001, "template does not exist in that language, or is not approved"],
+    [132000, "parameter count does not match the template"],
+    [132012, "parameter values formatted incorrectly"],
+    [131008, "missing required parameter"],
+    [131009, "invalid parameter values"],
+    [100, "unsupported or misspelled parameters"],
+  ])("treats code %i as final, because the request itself is wrong", async (code) => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: { message: "refused", code } }));
     const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
     expect(isPermanentRenewalSendFailure(error)).toBe(true);
   });
 
   it.each([
-    [401, "an expired or revoked token"],
-    [403, "a permission that can be granted"],
-    [408, "a timeout"],
-    [429, "rate limiting"],
-    [500, "a server error"],
-    [503, "an outage"],
-  ])("treats %i as retryable, so a fixable problem does not lose the warning", async (status) => {
+    [131030, "recipient not in the allowed list"],
+    [190, "expired access token"],
+    [4, "app rate limit"],
+    [80007, "account rate limit"],
+    [130429, "throughput reached"],
+    [131000, "unknown send error"],
+    [131016, "service temporarily unavailable"],
+    [131056, "too many messages to the same recipient"],
+    [2, "downtime or overload"],
+  ])("treats code %i as retryable, because it is fixable without changing the request", async (code) => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: { message: "not now", code } }));
+    const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
+    expect(isPermanentRenewalSendFailure(error)).toBe(false);
+  });
+
+  it.each([401, 403, 408, 429, 500, 503])("treats HTTP %i with no code as retryable", async (status) => {
     fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: "not now" } }));
     const error = await sendMetaWhatsApp(CONFIG, RECIPIENT, annual(), "en-US").catch((caught: unknown) => caught);
-    // 401 is the one that matters: a new token ten minutes later must still send the warning.
     expect(isPermanentRenewalSendFailure(error)).toBe(false);
     expect(String(error)).toContain(String(status));
   });
@@ -248,5 +261,39 @@ describe("metaWhatsAppConfig", () => {
       WHATSAPP_PHONE_NUMBER_ID: "1",
       WHATSAPP_API_BASE_URL: "https://inspector.example.test/v1/",
     } as Env)?.baseUrl).toBe("https://inspector.example.test/v1");
+  });
+});
+
+describe("failure classification", () => {
+  it("reads the code out of a Meta error body", () => {
+    expect(metaErrorCode('{"error":{"message":"x","code":131030}}')).toBe(131030);
+    expect(metaErrorCode('{"error":{"message":"x"}}')).toBeNull();
+    expect(metaErrorCode("not json at all")).toBeNull();
+    expect(metaErrorCode(null)).toBeNull();
+  });
+
+  it("never treats the allow-list rejection as final", () => {
+    // The defect this replaces: one bad phone number pushed attempts straight to the cap and
+    // consumed two windows for a problem a single allow-list entry fixes. 131030 is not even in
+    // Meta's published error reference, which is why an unknown code must default to retryable.
+    expect(isPermanentMetaFailure(400, '{"error":{"code":131030}}')).toBe(false);
+  });
+
+  it("defaults an unrecognised code to retryable regardless of status", () => {
+    expect(isPermanentMetaFailure(400, '{"error":{"code":999999}}')).toBe(false);
+    expect(isPermanentMetaFailure(422, '{"error":{"code":999999}}')).toBe(false);
+  });
+
+  it("falls back to the status only when no code can be read", () => {
+    expect(isPermanentMetaFailure(400, "<html>gateway error</html>")).toBe(true);
+    expect(isPermanentMetaFailure(404, null)).toBe(true);
+    expect(isPermanentMetaFailure(422, "")).toBe(true);
+    expect(isPermanentMetaFailure(503, "<html>gateway error</html>")).toBe(false);
+  });
+
+  it("lets the code override a status that would have said otherwise", () => {
+    // A 400 carrying a retryable code must not be final, and that is the whole fix.
+    expect(isPermanentMetaFailure(400, '{"error":{"code":131000}}')).toBe(false);
+    expect(isPermanentMetaFailure(500, '{"error":{"code":132001}}')).toBe(true);
   });
 });

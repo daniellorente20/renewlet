@@ -299,6 +299,42 @@ describe("renewal reminders end to end through the WhatsApp sender", () => {
     expect(db.prepare("SELECT status FROM subscription_reminder_sends").get()).toEqual({ status: "sent" });
   });
 
+  it("keeps the window alive when the recipient is not on the allow list", async () => {
+    const { db, env } = openDatabase();
+    // The exact response that consumed two real windows on 2026-09-09.
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      error: { message: "(#131030) Recipient phone number not in allowed list", code: 131030, type: "OAuthException" },
+    }), { status: 400, headers: { "content-type": "application/json" } }));
+
+    await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-15", [annual()], "en-US");
+    const row = db.prepare("SELECT status, attempts, last_error FROM subscription_reminder_sends").get() as {
+      status: string; attempts: number; last_error: string;
+    };
+    expect(row.status).toBe("failed");
+    // One attempt, not the cap. Adding the number to the allow list fixes it without changing the
+    // request, so the window has to survive to be retried.
+    expect(row.attempts).toBe(1);
+    expect(row.last_error).toContain("131030");
+
+    expect((await planRenewalReminders(env, USER_ID, "2026-09-16", [annual()])).map((d) => d.firedWindow)).toEqual([30]);
+
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 }));
+    const recovered = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-16", [annual()], "en-US");
+    expect(recovered).toEqual({ sent: 1, failed: 0 });
+  });
+
+  it("still consumes the window when the template itself is wrong", async () => {
+    const { db, env } = openDatabase();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      error: { message: "template does not exist in the specified language", code: 132001 },
+    }), { status: 400, headers: { "content-type": "application/json" } }));
+
+    await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, SETTINGS, "2026-09-15", [annual()], "en-US");
+    expect(db.prepare("SELECT status, attempts FROM subscription_reminder_sends").get()).toEqual({ status: "failed", attempts: 3 });
+    // Nothing about repeating this request can make it work, so it stops.
+    expect(await planRenewalReminders(env, USER_ID, "2026-09-16", [annual()])).toEqual([]);
+  });
+
   it("sends nothing at all when neither output is configured", async () => {
     const { db, env } = openDatabase();
     const result = await runRenewalRemindersForUser(env, USER_ID, { renewalWebhookUrl: "", testPhone: "" }, "2026-09-15", [annual()], "en-US");
