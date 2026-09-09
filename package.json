@@ -67,6 +67,7 @@
     "probe:workerd-upstream": "node scripts/workerd-upstream-probe.mjs",
     "cloudflare:migrations:apply:local": "node scripts/apply-cloudflare-d1-migrations.mjs --local",
     "cloudflare:migrations:apply": "node scripts/apply-cloudflare-d1-migrations.mjs --remote",
+    "cloudflare:migrations:guard": "tsx scripts/check-cloudflare-migrations-applied.ts",
     "deploy:cloudflare": "pnpm build:cloudflare && pnpm deploy",
     "lint": "pnpm lint:all",
     "lint:all": "pnpm --filter @renewlet/client lint && pnpm --filter @renewlet/website lint",
