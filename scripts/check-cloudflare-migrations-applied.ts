@@ -20,7 +20,12 @@ const migrationsDir = resolve(repoRoot, "apps/worker/migrations");
 const configPath = resolve(repoRoot, process.env["CI_WRANGLER_CONFIG"] || "wrangler.jsonc");
 const applyCommand = "pnpm cloudflare:migrations:apply";
 
-/** Workers Builds shares one Build command between production and branch builds. */
+/**
+ * On 10 September 2026 the build on branch chore/migration-guard ran a Build command that did not
+ * include this guard, while the Build command saved in Settings did include it. Whether the branch
+ * path holds its own configuration, or was only lagging behind the saved one, was not established.
+ * See docs/cloudflare-builds-notes.md.
+ */
 const DEFAULT_PRODUCTION_BRANCH = "main";
 
 export type GuardOutcome =
@@ -50,6 +55,11 @@ export function evaluateMigrations(files: readonly string[], applied: readonly s
  * A human running this by hand wants the real answer, so an absent WORKERS_CI_BRANCH means strict
  * rather than advisory. Other branches still print, because a warning that nobody sees is no
  * cheaper to ignore than one that fails the build.
+ *
+ * That said, no Workers Builds branch build has been seen running this guard at all, so on that
+ * platform nothing has reached the non-production path yet. The path stays: if the branch
+ * configuration catches up with the saved Build command, branch builds will run the guard and
+ * softening the outcome there is right again.
  */
 export function decideGuard(
   outcome: GuardOutcome,
