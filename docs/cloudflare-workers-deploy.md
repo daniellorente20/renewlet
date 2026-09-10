@@ -21,6 +21,33 @@ If the Cloudflare page says `Failed to get repository contents`, the deploy wiza
 
 If you are using a proxy/VPN node, a corporate or school network, or another shared network egress, the current egress IP may also be temporarily rate-limited by GitHub or Cloudflare. Avoid repeated retries; try again later, switch to a more reliable proxy node or network egress; if it still fails, use the manual deploy flow below.
 
+### Branch Builds Run A Different Build Configuration
+
+Cloudflare Builds does not run the same build configuration on every branch. The following was observed on 10 September 2026 in the dashboard for the `renewlet` Worker.
+
+Live values in `Settings` -> `Builds` on that date:
+
+| Setting | Value |
+| --- | --- |
+| Build command | `pnpm run build && pnpm cloudflare:migrations:guard` |
+| Deploy command | `npx wrangler deploy` |
+| Version command | `npx wrangler whoami && npx wrangler versions upload` |
+| API token | `Workers Builds - 2026-09-10 07:27` |
+
+The last build on the production branch (`#b97160f2`, branch `main`, commit `7ed6471`, 9 September 2026 at 16:31) records the same build command and the same deploy command, and its panel names the API token `Workers Builds - 2026-09-10 07:27`, a token that did not exist when that build ran.
+
+A build on a non-production branch (`#48233c90`, branch `chore/migration-guard`, commit `25a264d`, 10 September 2026 at 07:34, so after that token was created) is different in all three places. Its build command is `pnpm run build` on its own, and its log line reads `Executing user build command: pnpm run build`, so the migration guard did not run. Its deploy command is `npx wrangler whoami && npx wrangler versions upload`. Its API token is `renewlet build token`.
+
+The token list agrees with the second build: `renewlet build token` shows a last-used date of 10 September 2026, and `Workers Builds - 2026-09-10 07:27` shows no last-used date at all. The Worker has no preview environment either; `/workers/services/view/renewlet/preview/settings` answers `This environment does not exist on this Worker.`
+
+Three things follow:
+
+- The migration guard runs on the production-branch build path only. A build on any other branch does not run it, so a green branch build is not evidence that the guard passes.
+- The API token shown in `Settings` -> `Builds` applies to the production-branch path. Branch builds were seen still using the token configured before it, so an old build token is not retired by changing that setting.
+- Verifying a change to the build configuration, or to the build token, needs a build on the production branch. In this repository that means merging a pull request.
+
+The cause is not established. It is unknown whether the two paths hold separate configuration records, or whether the dashboard's per-build panel shows live values rather than the values recorded for that build. What is written above is the whole of what was verified.
+
 ### Upgrade
 
 One-click deploy creates and connects a repository in your GitHub account. To upgrade Renewlet later, update that generated repository. Do not click the one-click deploy button again; that can create a new Worker/D1/R2 instead of updating your existing instance.
