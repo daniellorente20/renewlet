@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertSendableRenewalEvent } from "./notification-renewal-webhook";
 import { renewalReminderFor } from "./renewal-reminders";
-import { runRenewalRemindersForUser } from "./renewal-reminder-run";
+import { runRenewalRemindersForUser, selectRenewalDelivery } from "./renewal-reminder-run";
 import { listRenewalReminderFailures, loadConsumedWindows, planRenewalReminders, recordRenewalReminderFailure, recordRenewalReminderSent } from "./renewal-reminder-store";
 import type { Env, SubscriptionRow } from "./types";
 
@@ -359,3 +359,92 @@ describe("renewal reminders end to end through the WhatsApp sender", () => {
   });
 });
 
+/**
+ * The selection itself, which is where reminders were being lost.
+ *
+ * WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID belong to the instance and settings.testPhone belongs
+ * to the user, so on a multi user instance the two can disagree, and every case below is a way they
+ * disagree.
+ */
+describe("renewal delivery selection", () => {
+  // A documentation address, written as a literal so the outbound URL policy can clear it without
+  // a DNS lookup of its own landing in the stubbed fetch and being counted as a delivery.
+  const WEBHOOK_URL = "https://203.0.113.10/renewal";
+  const WHATSAPP_URL = "https://graph.example.test/v23.0/123456789/messages";
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: "wamid.1" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function destinations(): string[] {
+    return fetchMock.mock.calls.map((call) => String(call[0]));
+  }
+
+  it("sends over WhatsApp when the instance has the credentials and this user has a number", async () => {
+    const { env } = openDatabase();
+    const settings = { renewalWebhookUrl: WEBHOOK_URL, testPhone: "34600111222" };
+
+    const result = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, settings, "2026-09-15", [annual()], "en-US");
+
+    expect(result).toEqual({ sent: 1, failed: 0 });
+    expect(destinations()).toEqual([WHATSAPP_URL]);
+  });
+
+  it("sends to the user's own webhook when the instance has the credentials and this user has no number", async () => {
+    const { db, env } = openDatabase();
+    const settings = { renewalWebhookUrl: WEBHOOK_URL, testPhone: "" };
+
+    const result = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, settings, "2026-09-15", [annual()], "en-US");
+
+    // The case that was broken. WhatsApp used to win on the instance secrets alone, throw
+    // WHATSAPP_RECIPIENT_NOT_CONFIGURED on every subscription, and retry to the cap, so this user
+    // received nothing and the webhook they had configured was never tried.
+    expect(destinations()).toEqual([WEBHOOK_URL]);
+    expect(result).toEqual({ sent: 1, failed: 0 });
+    expect(db.prepare("SELECT status FROM subscription_reminder_sends").get()).toEqual({ status: "sent" });
+  });
+
+  it("sends nothing when the instance has the credentials and this user has neither", async () => {
+    const { db, env } = openDatabase();
+    const settings = { renewalWebhookUrl: "", testPhone: "" };
+
+    expect(selectRenewalDelivery(whatsappEnv(env), settings, "en-US")).toBeNull();
+    const result = await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, settings, "2026-09-15", [annual()], "en-US");
+
+    expect(result).toEqual({ sent: 0, failed: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Nothing was attempted, so nothing may be recorded as failed either. A user with no output
+    // configured is not a delivery problem.
+    expect(db.prepare("SELECT COUNT(*) AS total FROM subscription_reminder_sends").get()).toEqual({ total: 0 });
+  });
+
+  it("does not conjure a sender from a number when the instance has no credentials", async () => {
+    const { env } = openDatabase();
+    const withPhoneOnly = { renewalWebhookUrl: WEBHOOK_URL, testPhone: "34600111222" };
+
+    await runRenewalRemindersForUser(env, USER_ID, withPhoneOnly, "2026-09-15", [annual()], "en-US");
+    expect(destinations()).toEqual([WEBHOOK_URL]);
+
+    expect(selectRenewalDelivery(env, { renewalWebhookUrl: "", testPhone: "34600111222" }, "en-US")).toBeNull();
+  });
+
+  it("treats a number with no digits in it as no number at all", async () => {
+    // Same failure wearing a different hat: each of these reaches the sender as an empty
+    // recipient, so trimming alone would still hand them WhatsApp and still deliver nothing.
+    for (const testPhone of ["   ", "+ () -", "phone pending"]) {
+      const { env } = openDatabase();
+      fetchMock.mockClear();
+
+      await runRenewalRemindersForUser(whatsappEnv(env), USER_ID, { renewalWebhookUrl: WEBHOOK_URL, testPhone }, "2026-09-15", [annual()], "en-US");
+
+      expect(destinations()).toEqual([WEBHOOK_URL]);
+      expect(selectRenewalDelivery(whatsappEnv(env), { renewalWebhookUrl: "", testPhone }, "en-US")).toBeNull();
+    }
+  });
+});
