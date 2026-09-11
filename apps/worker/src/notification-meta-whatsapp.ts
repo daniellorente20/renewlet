@@ -219,6 +219,13 @@ export async function sendMetaWhatsApp(
   locale: AppLocale,
 ): Promise<void> {
   const to = normalizeRecipientPhone(settings.testPhone);
+  // Unreachable through the reminder job, and that is the point rather than a reason to delete it.
+  // selectRenewalDelivery now asks this same question before it picks this sender. While it did
+  // not, this line was quietly absorbing a selection bug: a user with no number was given WhatsApp
+  // anyway, threw here on every subscription, and burned the retry budget on a failure no retry
+  // could fix, all without ever falling through to their own webhook. It stays because this
+  // function is exported and callable on its own, but it is a backstop, not the thing protecting
+  // anyone.
   if (!to) throw new RenewalSendError("WHATSAPP_RECIPIENT_NOT_CONFIGURED", true);
   const body = buildMetaTemplateMessage(assertSendableRenewalEvent(normalizeRenewalEventForTemplate(event)), to);
   const secrets = [config.token];

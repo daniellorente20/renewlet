@@ -1,5 +1,10 @@
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
-import { isPermanentRenewalSendFailure, metaWhatsAppConfig, sendMetaWhatsApp } from "./notification-meta-whatsapp";
+import {
+  isPermanentRenewalSendFailure,
+  metaWhatsAppConfig,
+  normalizeRecipientPhone,
+  sendMetaWhatsApp,
+} from "./notification-meta-whatsapp";
 import { sendRenewalWebhook, type RenewalUpcomingEvent } from "./notification-renewal-webhook";
 import { planRenewalReminders, recordRenewalReminderFailure, recordRenewalReminderSent } from "./renewal-reminder-store";
 import type { Env, SubscriptionRow } from "./types";
@@ -64,7 +69,16 @@ export function selectRenewalDelivery(
   locale: AppLocale,
 ): RenewalDelivery | null {
   const whatsapp = metaWhatsAppConfig(env);
-  if (whatsapp) return (event) => sendMetaWhatsApp(whatsapp, settings, event, locale);
+  // Both halves, because they answer different questions. The credentials are Worker level secrets
+  // shared by everyone with an account on this instance, while the recipient is this user's own
+  // setting, so a configured sender says nothing about whether this particular user can be reached.
+  // Selecting on the credentials alone handed WhatsApp to every account the moment the instance had
+  // it at all: users with no number failed every send, and their own webhook was never consulted
+  // because WhatsApp had already won here. Normalised rather than trimmed, so this asks the same
+  // question the sender asks and cannot answer it differently.
+  if (whatsapp && normalizeRecipientPhone(settings.testPhone)) {
+    return (event) => sendMetaWhatsApp(whatsapp, settings, event, locale);
+  }
   if (settings.renewalWebhookUrl.trim()) return (event) => sendRenewalWebhook(settings, event, locale);
   return null;
 }
