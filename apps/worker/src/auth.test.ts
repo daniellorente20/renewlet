@@ -606,6 +606,7 @@ function authHeaders(): Record<string, string> {
 
 function envFixture(updateRun: ReturnType<typeof vi.fn>, authSecurity?: AuthSecuritySettingsRow | null): Env {
   const sessionTouchRun = vi.fn().mockResolvedValue({});
+  const userTouchRun = vi.fn().mockResolvedValue({});
   return {
     DB: {
       batch: vi.fn(async (statements: Array<{ run?: () => Promise<unknown> }>) => {
@@ -633,6 +634,9 @@ function envFixture(updateRun: ReturnType<typeof vi.fn>, authSecurity?: AuthSecu
           }
           if (sql.includes("UPDATE sessions SET last_seen_at")) {
             return { run: sessionTouchRun };
+          }
+          if (sql.includes("UPDATE users SET last_seen_at")) {
+            return { run: userTouchRun };
           }
           return { run: updateRun };
         }),

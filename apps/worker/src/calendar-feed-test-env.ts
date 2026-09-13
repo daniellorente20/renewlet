@@ -194,6 +194,13 @@ class CalendarFeedTestDB {
   prepare(sql: string) {
     return new CalendarFeedTestStatement(this.state, sql);
   }
+
+  // requireAuth throttles its last_seen_at writes through a batch; running them in order is enough for the fake.
+  async batch(statements: CalendarFeedTestStatement[]): Promise<D1Result[]> {
+    const results: D1Result[] = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  }
 }
 
 class CalendarFeedTestStatement {
@@ -220,6 +227,7 @@ class CalendarFeedTestStatement {
         session_expires_at: "2099-01-01T00:00:00.000Z",
         session_created_at: "2026-05-29T00:00:00.000Z",
         session_last_seen_at: "2026-05-29T00:00:00.000Z",
+        user_last_seen_at: null,
         ...this.state.user,
       } satisfies SessionAuthRow;
       return row as T;
