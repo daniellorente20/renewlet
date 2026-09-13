@@ -5,6 +5,7 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNotificationJob, getNotificationJob, NOTIFICATION_CRON_WINDOW_MINUTES } from "./notification-jobs";
 import { getLocalScheduleDecision, scheduleOccurrence, type ScheduleOccurrence } from "./notification-schedule";
@@ -27,6 +28,18 @@ describe("how many cron ticks see one target as due", () => {
     // If the constant moves again, the duplicate-send analysis above stops describing the schedule
     // that runs, so it has to be redone rather than silently inherited.
     expect(NOTIFICATION_CRON_WINDOW_MINUTES).toBe(WINDOW_MINUTES);
+  });
+
+  it("reasons about the cron interval the deployment actually runs", () => {
+    // Deliberately pinned to the literal expression, which notification-cron-coverage.test.ts
+    // cannot do: that guard checks only the ratio, so a revert of wrangler.jsonc to "* * * * *"
+    // would leave 1 * 2 <= 20 true and pass green while silently undoing the interval. An upstream
+    // merge can revert that file, and this test lives only in the fork, so it cannot be merged away.
+    const config = JSON.parse(readFileSync(fileURLToPath(new URL("../../../wrangler.jsonc", import.meta.url)), "utf8")) as {
+      triggers?: { crons?: unknown };
+    };
+
+    expect(config.triggers?.crons).toEqual([`*/${CRON_INTERVAL_MINUTES} * * * *`]);
   });
 
   it("does not grow when the window and the interval are widened together", () => {
