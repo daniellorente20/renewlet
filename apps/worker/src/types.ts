@@ -50,6 +50,8 @@ export interface SessionRow {
 
 /** 联表认证结果；字段前缀用于避免 users 与 sessions 同名列在 D1 查询中互相覆盖。 */
 export interface SessionAuthRow extends UserRow {
+  /** users.last_seen_at is not part of USER_COLUMNS; the alias keeps it apart from sessions.last_seen_at. */
+  user_last_seen_at: string | null;
   session_id: string;
   session_token_hash: string;
   session_csrf_token_hash: string | null;

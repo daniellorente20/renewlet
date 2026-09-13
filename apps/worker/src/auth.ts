@@ -76,7 +76,7 @@ import { publicTurnstileConfig, requireTurnstileForPasswordLogin } from "./auth-
 import { buildInitialUserStateQueries } from "./initial-user-state";
 
 const DEFAULT_SESSION_TTL_DAYS = 30;
-const SESSION_LAST_SEEN_TOUCH_INTERVAL_MS = 15 * 60 * 1000;
+const LAST_SEEN_TOUCH_INTERVAL_MS = 15 * 60 * 1000;
 
 /**
  * appStatus 暴露认证前应用能力状态。
@@ -148,9 +148,11 @@ export async function login(request: Request, env: Env): Promise<Response> {
   await requireTurnstileForPasswordLogin(request, env, body.turnstileToken, locale);
   const user = await findUserByEmail(env, body.email.trim());
   if (!user || !(await verifyPassword(body.password, user.password_hash))) {
+    logLoginFailed();
     throw new HttpError(400, serverText(locale, "auth.invalidEmailOrPassword"));
   }
   if (user.banned === 1) {
+    logLoginFailed();
     throw new HttpError(403, serverText(locale, "auth.accountDisabled"));
   }
   await ensureSettings(env, user.id);
@@ -165,7 +167,9 @@ export async function login(request: Request, env: Env): Promise<Response> {
       methods: ticket.methods,
     }));
   }
-  return sessionSuccessResponse(request, await createIssuedSession(env, user));
+  const issued = await createIssuedSession(env, user);
+  logLoginSucceeded(user.id);
+  return sessionSuccessResponse(request, issued);
 }
 
 /**
@@ -203,8 +207,10 @@ export async function mfaVerify(request: Request, env: Env): Promise<Response> {
   const issued = await verifyMfaLogin(env, body, locale).catch((error: unknown) => {
     if (isAccountSecuritySchemaError(error)) throw error;
     // ticket 过期、方法不匹配和 OTP/恢复码错误统一成 401，避免暴露可枚举的认证器状态。
+    logLoginFailed();
     throw new HttpError(401, serverText(locale, "auth.sessionExpired"));
   });
+  logLoginSucceeded(issued.response.user.id);
   return sessionSuccessResponse(request, issued);
 }
 
@@ -292,8 +298,10 @@ export async function passkeyAuthenticateVerify(request: Request, env: Env): Pro
   const body = await readJson(request, passkeyAuthenticateVerifyBodySchema, locale);
   const response = await finishPasskeyAuthentication(env, request, body.challengeId, body.response).catch((error: unknown) => {
     if (isAccountSecuritySchemaError(error)) throw error;
+    logLoginFailed();
     throw new HttpError(401, serverText(locale, "auth.sessionExpired"));
   });
+  logLoginSucceeded(response.response.user.id);
   return sessionSuccessResponse(request, response);
 }
 
@@ -509,7 +517,8 @@ export async function requireAuth(request: Request, env: Env): Promise<AuthConte
   const row = await env.DB.prepare(`
     SELECT sessions.id AS session_id, sessions.token_hash AS session_token_hash, sessions.user_id AS session_user_id,
            sessions.expires_at AS session_expires_at, sessions.created_at AS session_created_at,
-           sessions.last_seen_at AS session_last_seen_at, sessions.csrf_token_hash AS session_csrf_token_hash, ${USER_COLUMNS_FROM_USERS}
+           sessions.last_seen_at AS session_last_seen_at, sessions.csrf_token_hash AS session_csrf_token_hash,
+           users.last_seen_at AS user_last_seen_at, ${USER_COLUMNS_FROM_USERS}
     FROM sessions JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?
     LIMIT 1
@@ -527,7 +536,7 @@ export async function requireAuth(request: Request, env: Env): Promise<AuthConte
     created_at: row.session_created_at,
     last_seen_at: row.session_last_seen_at,
   };
-  await touchSessionLastSeenIfStale(env, session.id, session.last_seen_at);
+  await touchLastSeenIfStale(env, row);
   return { user, session };
 }
 
@@ -592,12 +601,65 @@ function toSessionResponse(user: UserRow, expiresAt: string): SessionResponse {
   };
 }
 
-async function touchSessionLastSeenIfStale(env: Env, sessionId: string, lastSeenAt: string): Promise<void> {
-  const lastSeen = Date.parse(lastSeenAt);
+/**
+ * touchLastSeenIfStale records that an authenticated request happened, on both the session
+ * and the account.
+ *
+ * sessions.last_seen_at dies with its session: logout, a password change, a ban and an MFA
+ * reset all delete the row, so it cannot answer "when did this person last use Renewlet".
+ * users.last_seen_at survives all of that, and a login writes it on the first authenticated
+ * request because the column starts empty.
+ *
+ * Neither value takes part in authentication. Both writes are throttled to a quarter of an
+ * hour: without that, every read-only API call would become a D1 write for no new answer.
+ * Telemetry must never cost the user their request either, so a failed write is logged and
+ * swallowed.
+ */
+async function touchLastSeenIfStale(env: Env, row: SessionAuthRow): Promise<void> {
   const now = Date.now();
-  if (!Number.isNaN(lastSeen) && now - lastSeen < SESSION_LAST_SEEN_TOUCH_INTERVAL_MS) return;
-  // last_seen_at 只是会话活跃审计，不参与认证授权；节流写入避免所有只读 API 都放大成 D1 write。
-  await env.DB.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").bind(new Date(now).toISOString(), sessionId).run();
+  const timestamp = new Date(now).toISOString();
+  const statements: D1PreparedStatement[] = [];
+  if (isLastSeenStale(row.session_last_seen_at, now)) {
+    statements.push(env.DB.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").bind(timestamp, row.session_id));
+  }
+  if (isLastSeenStale(row.user_last_seen_at, now)) {
+    statements.push(env.DB.prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").bind(timestamp, row.session_user_id));
+  }
+  if (statements.length === 0) return;
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    // The message names the failing column when a deployment runs ahead of its migration; D1
+    // errors carry no account or subscription data.
+    console.error({
+      event: "last_seen_touch_failed",
+      error: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+    });
+  }
+}
+
+function isLastSeenStale(lastSeenAt: string | null, now: number): boolean {
+  const lastSeen = Date.parse(lastSeenAt ?? "");
+  return Number.isNaN(lastSeen) || now - lastSeen >= LAST_SEEN_TOUCH_INTERVAL_MS;
+}
+
+/**
+ * logLoginSucceeded and logLoginFailed are the only identity-bearing lines Renewlet writes to
+ * the platform log.
+ *
+ * They log an object rather than a sentence because Cloudflare indexes the fields of an
+ * object, which is what makes the outcome filterable in the dashboard.
+ *
+ * Only the internal user id is ever written. A name or an email would turn a three-day log
+ * into a copy of the account table, and the failure line carries no identity at all: it
+ * cannot, because sooner or later somebody types their password into the email box.
+ */
+function logLoginSucceeded(userId: string): void {
+  console.log({ event: "login", ok: true, user_id: userId });
+}
+
+function logLoginFailed(): void {
+  console.log({ event: "login", ok: false });
 }
 
 function setupEnabled(env: Env): boolean {
