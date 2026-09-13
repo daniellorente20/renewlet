@@ -51,5 +51,5 @@ is worth having; knowing who it claimed to be is not worth that risk.
 
 ## Reading the log around the cron
 
-The cron trigger runs every minute and writes several lines per pass, so a human request is easy to
-lose in the volume. Filter by `event` rather than scrolling.
+The cron trigger runs every ten minutes and writes several lines per pass, so a human request is
+still easier to find by filtering on `event` than by scrolling.

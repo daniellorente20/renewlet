@@ -8,8 +8,15 @@ import type { AppLocale } from "./http";
 import type { Env, NotificationJobRow } from "./types";
 import type { ScheduleOccurrence } from "./notification-schedule";
 
-// Worker 不能读取 Go 的通知 env；Cloudflare 调度常量固定在这里，并由 shared fixture 与 Go 测试锁住。
-export const NOTIFICATION_CRON_WINDOW_MINUTES = 2;
+// The Worker cannot read the Go server's notification env, so the Cloudflare scheduling constants
+// are fixed here. This one is paired with the cron interval in wrangler.jsonc: a reminder fires only
+// from a tick that lands between the target and the end of this window, so the interval has to stay
+// at half of it or less. notification-cron-coverage.test.ts holds that pairing.
+//
+// The shared fixture in packages/shared also says 2, but it is not this value: it passes its own
+// windowMinutes into the decision, so it is a set of cross-runtime test vectors rather than a
+// declaration of what this deployment runs. It stays at 2 whatever this constant becomes.
+export const NOTIFICATION_CRON_WINDOW_MINUTES = 20;
 export const NOTIFICATION_MAX_RETRIES = 3;
 export const NOTIFICATION_STALE_SENDING_MINUTES = 15;
 

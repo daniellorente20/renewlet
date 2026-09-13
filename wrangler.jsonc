@@ -34,7 +34,7 @@
   },
   "triggers": {
     "crons": [
-      "* * * * *"
+      "*/10 * * * *"
     ]
   },
   "d1_databases": [
