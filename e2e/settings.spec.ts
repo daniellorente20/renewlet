@@ -91,9 +91,9 @@ test("settings save, language switch, and floating layer layout stability", asyn
   await gotoSettingsSectionAfterHydration(page, "settings-notifications");
   await expect(page.getByRole("heading", { name: "系统配置" })).toBeVisible();
   await expectLabelControlGap(page.getByLabel("月度预算金额", { exact: true }), "settings monthly budget");
-  await expectLabelControlGap(page.getByLabel("第三方 API 测试号码", { exact: true }), "settings test phone");
+  await expectLabelControlGap(page.getByLabel("WhatsApp 续订提醒接收号码", { exact: true }), "settings test phone");
 
-  const testPhoneInput = page.getByLabel("第三方 API 测试号码", { exact: true });
+  const testPhoneInput = page.getByLabel("WhatsApp 续订提醒接收号码", { exact: true });
   await fillChangedTestPhone(testPhoneInput);
   const saveChangesButton = getSettingsSaveButton(page);
   await expect(saveChangesButton).toBeVisible();

@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./support/test";
 import { expectOverlayLeavesTopScrim } from "./support/layout";
+import { cloudflareRuntime } from "./support/runtime";
 import { gotoSettingsSectionAfterHydration } from "./support/settings";
 
 async function createNotificationHistoryRecords(page: Page) {
@@ -43,6 +44,9 @@ async function createNotificationHistoryRecords(page: Page) {
 }
 
 test("mobile notification history opens selected details in a bounded bottom drawer", async ({ page }) => {
+  // Fork only. The twelve history rows are written by a Go test straight into the PocketBase file,
+  // on purpose, so the page reads real stored jobs. Nothing equivalent exists for local D1 yet.
+  test.skip(cloudflareRuntime, "notification history fixture exists only for the Go server");
   await page.setViewportSize({ width: 390, height: 720 });
   await page.goto("/");
   await createNotificationHistoryRecords(page);

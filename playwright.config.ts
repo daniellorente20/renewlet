@@ -47,6 +47,9 @@ const e2eClientPort = 15173;
 const e2eServerURL = `http://127.0.0.1:${e2eServerPort}`;
 const e2eClientURL = `http://127.0.0.1:${e2eClientPort}`;
 const adminStorageState = "e2e/.auth/admin.json";
+// Fork only. The Go server stays the default so upstream's own setup keeps working unchanged; this
+// fork deploys the Worker alone, and its CI sets this to test what it ships.
+const cloudflareRuntime = env.RENEWLET_E2E_RUNTIME?.trim() === "cloudflare";
 const browserExecutablePath = env.RENEWLET_E2E_BROWSER_EXECUTABLE?.trim();
 // 本地可能遇到 Playwright CDN/TLS 被代理拦截；只在显式传入时用系统浏览器，CI 仍使用 hermetic 浏览器。
 const localBrowserFallback = browserExecutablePath ? { launchOptions: { executablePath: browserExecutablePath } } : {};
@@ -79,7 +82,20 @@ export default defineConfig({
     ...localBrowserFallback,
   },
   webServer: [
-    {
+    cloudflareRuntime ? {
+      // Fork only: see scripts/e2e-cloudflare-server.mjs. A clean local D1 on every run plays the
+      // part the emptied pb_data_e2e directory plays for the Go server.
+      command: `node scripts/e2e-cloudflare-server.mjs --port ${e2eServerPort} --ip 127.0.0.1`,
+      env: {
+        ...proxyEnv,
+      },
+      url: `${e2eServerURL}/api/app/health`,
+      reuseExistingServer: false,
+      // Builds the client when there is no dist yet, then applies every migration.
+      timeout: 600_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    } : {
       // 每次清空 e2e 数据目录，让 setup project 拥有唯一的初始化状态；不复用旧 server
       // 可以避免 storage state 与 PocketBase SQLite 数据跨测试轮次串味。
       command: `rm -rf ./pb_data_e2e && go run ./cmd/renewlet serve --http=127.0.0.1:${e2eServerPort} --dir=./pb_data_e2e`,
@@ -104,6 +120,7 @@ export default defineConfig({
       env: {
         ...proxyEnv,
         VITE_DEV_PROXY_TARGET: e2eServerURL,
+        ...(cloudflareRuntime ? { VITE_RENEWLET_RUNTIME: "cloudflare" } : {}),
         ...(performanceMode || previousDist ? { VITE_RENEWLET_RUNTIME: "docker" } : {}),
       },
       url: e2eClientURL,
