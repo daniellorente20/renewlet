@@ -314,7 +314,7 @@ test("short H5 viewport keeps dialogs and bottom actions operable", async ({ pag
   await expect(subscriptionDialog).toBeHidden();
 
   await gotoSettingsSectionAfterHydration(page, "settings-notifications");
-  const testPhoneInput = page.getByLabel("第三方 API 测试号码", { exact: true });
+  const testPhoneInput = page.getByLabel("WhatsApp 续订提醒接收号码", { exact: true });
   await fillChangedTestPhone(testPhoneInput);
   const saveButton = getSettingsSaveButton(page);
   const discardButton = getSettingsDiscardButton(page);

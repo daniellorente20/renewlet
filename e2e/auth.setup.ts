@@ -7,6 +7,7 @@ import {
   isProductLoginResponse,
 } from "./support/auth";
 import { expectLabelControlGap } from "./support/layout";
+import { cloudflareRuntime } from "./support/runtime";
 
 // setup 项目负责生成后续所有 E2E 复用的管理员 storageState；若这里过早写入，会把半登录态扩散到整套测试。
 setup("install admin through Renewlet setup UI", async ({ page }) => {
@@ -43,23 +44,27 @@ setup("install admin through Renewlet setup UI", async ({ page }) => {
   expect(loginResponse.ok(), await loginResponse.text()).toBe(true);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("月均支出")).toBeVisible();
-  // 仅给少数 E2E 内部表 seed 用例提供 collection 写入 token；真实产品 API 认证走 HttpOnly cookie + CSRF。
-  const pocketBaseAuth = await page.evaluate(async ({ email, password }) => {
-    const response = await fetch("/api/collections/users/auth-with-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identity: email, password }),
-    });
-    return {
-      body: await response.text(),
-      ok: response.ok,
-      status: response.status,
-    };
-  }, { email: adminEmail, password: adminPassword });
-  expect(pocketBaseAuth.ok, `seed PocketBase auth state: ${pocketBaseAuth.status} ${pocketBaseAuth.body}`).toBe(true);
-  await page.evaluate((body) => {
-    window.localStorage.setItem("pocketbase_auth", body);
-  }, pocketBaseAuth.body);
+  // The Worker has no PocketBase collection API. The one test that needs this token seeds through
+  // the Go server and is skipped on the Worker.
+  if (!cloudflareRuntime) {
+    // 仅给少数 E2E 内部表 seed 用例提供 collection 写入 token；真实产品 API 认证走 HttpOnly cookie + CSRF。
+    const pocketBaseAuth = await page.evaluate(async ({ email, password }) => {
+      const response = await fetch("/api/collections/users/auth-with-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity: email, password }),
+      });
+      return {
+        body: await response.text(),
+        ok: response.ok,
+        status: response.status,
+      };
+    }, { email: adminEmail, password: adminPassword });
+    expect(pocketBaseAuth.ok, `seed PocketBase auth state: ${pocketBaseAuth.status} ${pocketBaseAuth.body}`).toBe(true);
+    await page.evaluate((body) => {
+      window.localStorage.setItem("pocketbase_auth", body);
+    }, pocketBaseAuth.body);
+  }
 
   await page.context().storageState({ path: adminStorageState });
 });

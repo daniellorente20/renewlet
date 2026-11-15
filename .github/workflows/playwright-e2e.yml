@@ -51,6 +51,9 @@ jobs:
 
       - name: Run Playwright E2E
         id: playwright
+        # Fork only: this fork deploys the Cloudflare Worker alone, so test that instead of Go.
+        env:
+          RENEWLET_E2E_RUNTIME: cloudflare
         run: pnpm test:e2e
 
       - name: Capture E2E port diagnostics

@@ -111,7 +111,7 @@ export async function gotoSettingsSectionAfterHydration(page: Page, sectionId: S
   await expect(section).not.toHaveAttribute("aria-busy", "true");
 
   if (sectionId === "settings-notifications" && remoteTestPhone !== null) {
-    const testPhoneInput = page.getByLabel(/^(第三方 API 测试号码|Third-party API test number)$/);
+    const testPhoneInput = page.getByLabel(/^(WhatsApp 续订提醒接收号码|WhatsApp renewal reminder number)$/);
     await expect(testPhoneInput).toHaveValue(remoteTestPhone);
   }
 }
