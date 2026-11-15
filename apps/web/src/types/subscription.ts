@@ -8,7 +8,7 @@
  */
 import type { ApiAppSettings } from "@renewlet/shared/schemas/settings";
 import { labelsFromCatalog } from "@/i18n/label-messages";
-import { labels, type LocalizedLabels } from '@/i18n/locales';
+import { labels, withDerivedLabels, type LocalizedLabels } from '@/i18n/locales';
 import { SUPPORTED_EXCHANGE_RATE_CURRENCIES, getIntlCurrencyOptionLabel } from '@/lib/currency-data';
 import type { DateOnly } from '@/lib/time/date-only';
 import type { CostSharing } from '@renewlet/shared/cost-sharing';
@@ -182,6 +182,7 @@ export type OneTimeBuyoutSubscriptionCollectionItem = Exclude<
 >;
 
 type SubscriptionDetailDomainFields = {
+  updatedAt?: string | undefined;
   website: string | undefined;
   notes: string | undefined;
   tags: string[];
@@ -210,7 +211,7 @@ export type OneTimeBuyoutSubscription = Exclude<OneTimeSubscription, OneTimeFixe
 export type FixedCycleSubscription = RecurringCycleSubscription | OneTimeSubscription;
 
 type SubscriptionFormSubmissionFrom<T extends Subscription> = T extends Subscription
-  ? Omit<T, "id" | "pinned" | "extra" | "trialEndDate">
+  ? Omit<T, "id" | "pinned" | "extra" | "trialEndDate" | "updatedAt">
   : never;
 export type SubscriptionFormSubmission = SubscriptionFormSubmissionFrom<Subscription>;
 type SubscriptionDraftFrom<T extends SubscriptionFormSubmission> = T extends SubscriptionFormSubmission
@@ -371,9 +372,13 @@ export interface RepeatReminderWindowOption {
 /** 两个远端汇率来源共同支持的 146 种货币（用于默认列表与下拉选项）。 */
 export const CURRENCY_OPTIONS = SUPPORTED_EXCHANGE_RATE_CURRENCIES.map((value) => ({
   value,
-  labels: labels(
-    getIntlCurrencyOptionLabel(value, 'zh-CN'),
-    getIntlCurrencyOptionLabel(value, 'en-US'),
+  labels: withDerivedLabels(
+    labels(
+      getIntlCurrencyOptionLabel(value, 'zh-CN'),
+      getIntlCurrencyOptionLabel(value, 'en-US'),
+    ),
+    `currency.${value}`,
+    (locale) => getIntlCurrencyOptionLabel(value, locale),
   ),
   region: 'global',
 })) satisfies readonly CurrencyOption[];

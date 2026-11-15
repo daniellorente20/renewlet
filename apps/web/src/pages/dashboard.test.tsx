@@ -33,7 +33,7 @@ const mocks = vi.hoisted(() => ({
   handleTogglePublicHiddenSubscription: vi.fn(),
   handleSaveSubscription: vi.fn(),
   ratesLoading: false,
-  upcomingRenewalsCalls: [] as Array<{ count: number; today: string; notificationReminderDays: number }>,
+  upcomingRenewalsCalls: [] as Array<{ count: number; today: string }>,
   useSettings: vi.fn(),
   useSubscriptionAnalytics: vi.fn<() => MockSubscriptionAnalyticsResult>(),
   useSubscriptionDetail: vi.fn<(id: string | null) => MockSubscriptionDetailResult>(),
@@ -115,13 +115,11 @@ vi.mock("@/components/upcoming-renewals", () => ({
   UpcomingRenewals: ({
     subscriptions,
     today,
-    notificationReminderDays,
   }: {
     subscriptions: SubscriptionCollectionItem[];
     today: string;
-    notificationReminderDays: number;
   }) => {
-    mocks.upcomingRenewalsCalls.push({ count: subscriptions.length, today, notificationReminderDays });
+    mocks.upcomingRenewalsCalls.push({ count: subscriptions.length, today });
     return <div data-testid="upcoming-renewals">{subscriptions.length}</div>;
   },
 }));
@@ -161,7 +159,7 @@ vi.mock("@/hooks/use-subscriptions", () => ({
   useSubscriptionAnalytics: mocks.useSubscriptionAnalytics,
   useSubscriptionDetail: mocks.useSubscriptionDetail,
   useSubscriptionFacets: () => ({
-    data: { total: 1, categoryCounts: { productivity: 1 }, tags: [], visibleCount: 1, hiddenCount: 0 },
+    data: { total: 1, categoryCounts: { productivity: 1 }, tags: [], visibleCount: 1, hiddenCount: 0, expiredCount: 0, lifetimeCount: 0 },
   }),
 }));
 
@@ -287,7 +285,6 @@ describe("Dashboard page loading state", () => {
     expect(mocks.upcomingRenewalsCalls[mocks.upcomingRenewalsCalls.length - 1]).toEqual({
       count: 1,
       today: "2026-06-15",
-      notificationReminderDays: 5,
     });
     expect(screen.getByTestId("spending-chart")).toHaveTextContent("1:CNY:2026-06-15:7");
     expect(screen.getByText("日均 ¥46.67 · 汇率加载中...")).toBeInTheDocument();

@@ -507,6 +507,14 @@ func validateAppSessionCSRF(request *http.Request, session *core.Record) error {
 }
 
 func requireSameOriginRequest(request *http.Request) error {
+	// fnOS 内置浏览器经应用代理访问时，页面 Origin 与上游 Host 不同；浏览器生成的 same-origin 才反映它实际请求的同源关系。
+	// same-site/none/cross-site 不能放行写请求；缺少 Fetch Metadata 时继续用 Origin/Referer 严格校验。
+	switch request.Header.Get("Sec-Fetch-Site") {
+	case "same-origin":
+		return nil
+	case "same-site", "cross-site", "none":
+		return errors.New("fetch site mismatch")
+	}
 	expected := requestOrigin(request)
 	if expected == "" {
 		return errors.New("missing request origin")

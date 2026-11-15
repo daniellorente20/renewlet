@@ -2,7 +2,7 @@ import { getApiLocale } from "@/i18n/api-locale";
 import { translate } from "@/i18n/messages";
 import { apiFetch } from "@/lib/api-client";
 import { assertDateOnly, type DateOnly } from "@/lib/time/date-only";
-import { getCurrentUserId } from "@/lib/pocketbase";
+import { getProductCurrentUserId } from "@/services/product-session";
 import type {
   Subscription,
   SubscriptionCollectionItem,
@@ -37,6 +37,8 @@ type SubscriptionCollectionBaseForService = Pick<
   | "logo"
   | "price"
   | "currency"
+  | "balance"
+  | "balanceCurrency"
   | "category"
   | "status"
   | "paymentMethod"
@@ -53,6 +55,7 @@ type SubscriptionCollectionBaseForService = Pick<
 
 type SubscriptionDetailFieldsForService = Pick<
   Subscription,
+  | "updatedAt"
   | "website"
   | "notes"
   | "tags"
@@ -108,6 +111,8 @@ function fromApiSubscriptionCollectionBase(
     logo: parsedRow.logo,
     price: parsedRow.price,
     currency: parsedRow.currency,
+    balance: parsedRow.balance,
+    balanceCurrency: parsedRow.balanceCurrency,
     category: parsedRow.category,
     status: parsedRow.status,
     paymentMethod: parsedRow.paymentMethod,
@@ -127,6 +132,7 @@ function fromApiSubscriptionCollectionBase(
 
 function fromApiSubscriptionDetailFields(parsedRow: ApiSubscription): SubscriptionDetailFieldsForService {
   return {
+    updatedAt: parsedRow.updatedAt,
     website: parsedRow.website,
     notes: parsedRow.notes,
     tags: parsedRow.tags,
@@ -201,6 +207,8 @@ function toSubscriptionFormPayload(submission: SubscriptionFormSubmission) {
     logo: submission.logo ?? null,
     price: submission.price,
     currency: submission.currency,
+    balance: submission.balance ?? null,
+    balanceCurrency: submission.balanceCurrency ?? null,
     billingCycle: submission.billingCycle,
     customDays: submission.customDays ?? null,
     customCycleUnit: submission.customCycleUnit ?? null,
@@ -259,7 +267,7 @@ export const subscriptionService = {
     filters?: SubscriptionListFilters,
     signal?: AbortSignal,
   ): Promise<SubscriptionPage> {
-    if (!getCurrentUserId()) return { subscriptions: [], nextCursor: null, total: 0 };
+    if (!getProductCurrentUserId()) return { subscriptions: [], nextCursor: null, total: 0 };
     const params = new URLSearchParams({ limit: String(normalizeSubscriptionPageLimit(limit)) });
     if (cursor) params.set("cursor", cursor);
     appendSubscriptionListFilters(params, filters);
@@ -276,7 +284,7 @@ export const subscriptionService = {
   },
 
   async index(filters?: SubscriptionListFilters, signal?: AbortSignal): Promise<SubscriptionIndex> {
-    if (!getCurrentUserId()) return { subscriptions: [], total: 0 };
+    if (!getProductCurrentUserId()) return { subscriptions: [], total: 0 };
     const params = new URLSearchParams();
     appendSubscriptionListFilters(params, filters);
     const suffix = params.size > 0 ? `?${params.toString()}` : "";
@@ -288,21 +296,21 @@ export const subscriptionService = {
   },
 
   async analytics(signal?: AbortSignal): Promise<SubscriptionCollectionItem[]> {
-    if (!getCurrentUserId()) return [];
+    if (!getProductCurrentUserId()) return [];
     const data = await apiFetch("/api/app/subscriptions/analytics", subscriptionsAnalyticsResponseSchema, signalInit(signal));
     return data.subscriptions.map(fromParsedApiSubscriptionCollectionItem);
   },
 
   async calendar(from: DateOnly, to: DateOnly, signal?: AbortSignal): Promise<SubscriptionCollectionItem[]> {
-    if (!getCurrentUserId()) return [];
+    if (!getProductCurrentUserId()) return [];
     const params = new URLSearchParams({ from, to });
     const data = await apiFetch(`/api/app/subscriptions/calendar?${params.toString()}`, subscriptionsCalendarResponseSchema, signalInit(signal));
     return data.subscriptions.map(fromParsedApiSubscriptionCollectionItem);
   },
 
   async facets(signal?: AbortSignal): Promise<SubscriptionFacets> {
-    if (!getCurrentUserId()) {
-      return { total: 0, categoryCounts: {}, tags: [], visibleCount: 0, hiddenCount: 0 };
+    if (!getProductCurrentUserId()) {
+      return { total: 0, categoryCounts: {}, tags: [], visibleCount: 0, hiddenCount: 0, expiredCount: 0, lifetimeCount: 0 };
     }
     return await apiFetch("/api/app/subscriptions/facets", subscriptionFacetsResponseSchema, signalInit(signal));
   },
@@ -313,13 +321,13 @@ export const subscriptionService = {
   },
 
   async exportAll(signal?: AbortSignal): Promise<Subscription[]> {
-    if (!getCurrentUserId()) return [];
+    if (!getProductCurrentUserId()) return [];
     const data = await apiFetch("/api/app/subscriptions/export", subscriptionsExportResponseSchema, signalInit(signal));
     return data.subscriptions.map(fromParsedApiSubscription);
   },
 
   async create(sub: SubscriptionDraft): Promise<Subscription> {
-    if (!getCurrentUserId()) throw new Error(translate(getApiLocale(), "auth.loginRequired"));
+    if (!getProductCurrentUserId()) throw new Error(translate(getApiLocale(), "auth.loginRequired"));
     const data = await apiFetch("/api/app/subscriptions", subscriptionResponseSchema, {
       method: "POST",
       body: JSON.stringify(toSubscriptionCreatePayload(sub)),

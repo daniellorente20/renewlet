@@ -2,6 +2,7 @@ import { z } from "zod";
 import { apiEmptySuccess, apiSuccess } from "@renewlet/shared/schemas/api";
 import { apiErrorResponseSchema } from "@renewlet/shared/schemas/errors";
 import { DEFAULT_SERVER_I18N_LOCALE, requestLocale, serverText, type AppLocale } from "./server-i18n";
+import { UpstreamOperationError, UpstreamResponseError } from "./upstream-response";
 
 const JSON_LIMIT_BYTES = 1 << 20;
 const EMPTY_BODY_LIMIT_BYTES = 1024;
@@ -38,15 +39,34 @@ export function ok(status = 200): Response {
 }
 
 /** errorResponse 是 Worker 错误 wire contract 的唯一出口；不要在 handler 里手写扁平 message/code。 */
-export function errorResponse(status: number, message: string, code?: string, details?: unknown): Response {
+export function errorResponse(
+  status: number,
+  message: string,
+  code?: string,
+  details?: unknown,
+  init: ResponseInit = {},
+): Response {
   // 这里 parse shared schema 是运行时自检，防止 Worker 和 Go/前端约定的错误 envelope 悄悄漂移。
+  const detailsRecord = details && typeof details === "object" && !Array.isArray(details)
+    ? details as Record<string, unknown>
+    : null;
+  const requestId = typeof detailsRecord?.["requestId"] === "string" && detailsRecord["requestId"].trim().length > 0
+    ? detailsRecord["requestId"]
+    : crypto.randomUUID();
+  const headers = new Headers(init.headers);
+  headers.set("cache-control", "no-store");
   return json(apiErrorResponseSchema.parse({
     error: {
       code: code ?? defaultErrorCodeForStatus(status),
       message,
       ...(details === undefined ? {} : { details }),
+      requestId,
     },
-  }), { status });
+  }), {
+    ...init,
+    status,
+    headers,
+  });
 }
 
 function defaultErrorCodeForStatus(status: number): string {
@@ -327,6 +347,11 @@ export class HttpError extends Error {
 }
 
 export function toResponse(error: unknown, locale: AppLocale = DEFAULT_SERVER_I18N_LOCALE): Response {
+  if (error instanceof UpstreamResponseError) return error.toResponse();
+  // 未被业务层捕获的上游 HTTP 错误也保持原 status/body；只有没有真实响应的 transport 错误才进入产品 envelope。
+  if (error instanceof UpstreamOperationError && error.status) {
+    return new UpstreamResponseError(error.status, error.details?.rawResponseText ?? "").toResponse();
+  }
   // 未知异常只作为 500 返回；真正的字段级错误必须在边界处抛 HttpError，避免泄漏内部堆栈。
   if (error instanceof HttpError) return errorResponse(error.status, error.message, error.code, error.details);
   return errorResponse(500, serverText(locale, "common.internalError"), "INTERNAL_ERROR");

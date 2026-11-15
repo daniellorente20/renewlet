@@ -2,6 +2,21 @@ import { expect, type Locator, type Page, type Route } from "@playwright/test";
 
 const ADVANCED_SETTINGS_MODULE_ROUTE = "**/settings-advanced-sections.tsx*";
 
+export const ADVANCED_SETTINGS_SECTION_IDS = [
+  "settings-icon-sources",
+  "settings-uploaded-icons",
+  "settings-ai-recognition",
+  "settings-budget",
+  "settings-data-config",
+  "settings-exchange",
+  "settings-cloud-backup",
+  "settings-calendar-feed",
+  "settings-public-status",
+  "settings-public-api",
+  "settings-timezone",
+  "settings-notifications",
+] as const;
+
 export async function expectSettingsSectionAtScrollAnchor(section: Locator) {
   await expect.poll(() => section.evaluate((element) => {
     const root = document.getElementById("root");
@@ -74,6 +89,14 @@ export async function gotoSettingsAfterHydration(page: Page) {
   const settingsRead = waitForSettingsRead(page);
   await page.goto("/settings");
   await settingsRead;
+}
+
+export async function expectAllAdvancedSettingsSectionsReady(page: Page) {
+  await Promise.all(ADVANCED_SETTINGS_SECTION_IDS.map(async (sectionId) => {
+    const section = page.locator(`#${sectionId}`);
+    await expect(section).toHaveCount(1);
+    await expect(section).not.toHaveAttribute("aria-busy", "true");
+  }));
 }
 
 export async function gotoSettingsSectionAfterHydration(page: Page, sectionId: SettingsSectionId) {

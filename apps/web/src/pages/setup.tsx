@@ -7,6 +7,7 @@
  * 注意： 这里的表单校验只是 UX，不能放宽后端 strict JSON 和安装状态检查。
  */
 import { type FormEvent, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from '@/lib/router';
 import { ArrowRight, Lock, Mail, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ import { toast } from "@/components/ui/sonner";
 import { apiFetch } from "@/lib/api-client";
 import { setupCreateResponseSchema } from "@/lib/api/schemas/app";
 import { getDisplayErrorMessage } from "@/lib/display-error";
-import { useSetupStatus } from "@/hooks/use-setup-status";
+import { appStatusQueryKey, useAppStatus } from "@/hooks/use-app-status";
 import { useRouteReady } from "@/components/route-progress";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -27,10 +28,14 @@ type SetupErrors = Partial<Record<"name" | "email" | "password", string>>;
 
 export default function SetupPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
-  const { setupRequired, isLoading: isSetupStatusLoading } = useSetupStatus();
+  const appStatus = useAppStatus();
+  const setupRequired = appStatus.data?.setupRequired === true;
+  const setupEnabled = appStatus.data?.setupEnabled === true;
+  const isSetupStatusLoading = appStatus.isLoading;
   useRouteReady(isSetupStatusLoading);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("Admin");
@@ -76,7 +81,8 @@ export default function SetupPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isSubmitting) return;
+    // 状态未知时禁止初始化；只有后端确认 setupRequired 且 setupEnabled 才能进入写入流程。
+    if (isSubmitting || appStatus.status !== "ready" || !setupRequired || !setupEnabled) return;
 
     const { nextErrors, trimmedName, trimmedEmail } = validate();
     if (Object.keys(nextErrors).length > 0) {
@@ -94,6 +100,8 @@ export default function SetupPage() {
         body: JSON.stringify({ name: trimmedName, email: trimmedEmail, password }),
       });
 
+      // 创建管理员会改变认证前能力；先失效共享查询，避免其它公开入口继续显示首装状态。
+      await queryClient.invalidateQueries({ queryKey: appStatusQueryKey });
       toast.success(t("setup.adminCreated"));
       router.replace("/login");
     } catch (error: unknown) {
@@ -105,7 +113,21 @@ export default function SetupPage() {
     }
   };
 
-  if (!isSetupStatusLoading && setupRequired === false) {
+  if (appStatus.status === "error" || (appStatus.status === "ready" && setupRequired && !setupEnabled)) {
+    return (
+      <div className="auth-page bg-background theme-gradient">
+        <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-card sm:p-8" role="alert">
+          <h1 className="text-xl font-semibold text-foreground">{t("setup.failed")}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t("setup.failedDescription")}</p>
+          <Button className="mt-6 w-full" onClick={() => void appStatus.retry()} disabled={appStatus.isRefreshing}>
+            {t("system.retry")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (appStatus.status === "ready" && !setupRequired) {
     return (
       <div className="auth-page bg-background theme-gradient">
         <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-card sm:p-8">
@@ -216,7 +238,7 @@ export default function SetupPage() {
           </FormField>
 
           <div className="pt-3">
-            <Button type="submit" className="w-full" disabled={isSubmitting || isSetupStatusLoading}>
+            <Button type="submit" className="w-full" disabled={isSubmitting || isSetupStatusLoading || !setupEnabled}>
               {isSubmitting ? t("common.creating") : t("setup.createAdmin")}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

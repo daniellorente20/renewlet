@@ -10,7 +10,8 @@
  * 需要把 label/color view model 从上层传入。
  */
 
-import { memo, useState, type ReactNode } from 'react';
+import { Checkbox } from "@/components/ui/checkbox";
+import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { ConfigItem } from '@/types/config';
 import {
   DEFAULT_NOTIFICATION_REMINDER_DAYS,
@@ -21,7 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { colorWithAlpha } from '@/lib/color';
-import { Calendar, MoreHorizontal, CalendarClock, Bell, CreditCard, CalendarPlus, Copy, Eye, EyeOff, Gauge, Pencil, Pin, PinOff, RotateCw, Trash2 } from 'lucide-react';
+import { Wallet, Calendar, MoreHorizontal, CalendarClock, Bell, CreditCard, CalendarPlus, Copy, Eye, EyeOff, Gauge, Pencil, Pin, PinOff, RotateCw, Trash2 } from 'lucide-react';
 import {
   daysBetweenDateOnly,
   type DateOnly,
@@ -51,7 +52,7 @@ import {
 import { useI18n } from '@/i18n/I18nProvider';
 import { SubscriptionLogo } from '@/components/subscription-logo';
 import { SubscriptionStatusBadge } from '@/components/subscription-status-badge';
-import { formatCompactCurrencyAmount } from '@/lib/currency';
+import { formatCurrency as formatPreciseCurrency, formatCompactCurrencyAmount } from '@/lib/currency';
 import {
   formatBillingCycleLabel,
   isOneTimeBuyout,
@@ -82,8 +83,11 @@ interface SubscriptionCardProps {
   onTogglePinned?: (id: string) => void;
   /** 公开页隐藏切换由页面持有 mutation，卡片只负责菜单入口。 */
   onTogglePublicHidden?: (id: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onSelect?: ((id: string, selected: boolean) => void) | undefined;
   /** 手动续订动作由页面持有 mutation，卡片只负责可见入口。 */
-  onRenew?: (id: string) => void;
+  onRenew?: (id: string, restoreTarget?: HTMLElement | null) => void;
   /** 卡片主体 primary action：打开只读详情；菜单内动作保持独立。 */
   onViewDetails?: (id: string) => void;
   /** 日历弹层需要完整 detail DTO，由页面级控制器按 intent 读取。 */
@@ -171,6 +175,9 @@ function SubscriptionCardComponent({
   onClone,
   onTogglePinned,
   onTogglePublicHidden,
+  selectionMode = false,
+  selected = false,
+  onSelect,
   onRenew,
   onViewDetails,
   onAddToCalendar,
@@ -193,6 +200,7 @@ function SubscriptionCardComponent({
     color: categoryColor,
   };
 
+  const moreActionsRef = useRef<HTMLButtonElement>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const daysUntilRenewal = daysBetweenDateOnly(today, subscription.nextBillingDate);
   const daysUntilTrialEnd = subscription.trialEndDate ? daysBetweenDateOnly(today, subscription.trialEndDate) : null;
@@ -311,6 +319,15 @@ function SubscriptionCardComponent({
           truncate: true,
         }]
       : []),
+    ...(subscription.balance !== undefined && subscription.balanceCurrency
+      ? [{
+          key: "balance",
+          icon: <Wallet className="h-3.5 w-3.5 shrink-0" />,
+          text: `${t("subscription.field.balance")} ${formatPreciseCurrency(subscription.balance, subscription.balanceCurrency, locale, 6)}`,
+          tone: "muted" as const,
+          tabular: true,
+        }]
+      : []),
     ...(costSharingSummary.enabled
       ? [{
           key: "cost-sharing",
@@ -337,22 +354,51 @@ function SubscriptionCardComponent({
   const handleViewDetails = () => {
     onViewDetails?.(subscription.id);
   };
+  const handleSelectionClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!selectionMode || !onSelect) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select, [role='menuitem']")) return;
+    onSelect(subscription.id, !selected);
+  };
+  const handleSelectionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!selectionMode || !onSelect || event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelect(subscription.id, !selected);
+  };
 
   return (
     <>
     <div
       data-testid="subscription-card"
+      role={selectionMode ? "checkbox" : undefined}
+      aria-checked={selectionMode ? selected : undefined}
+      aria-label={selectionMode ? t("subscriptions.bulkVisibilitySelectSubscription", { name: subscription.name }) : undefined}
+      tabIndex={selectionMode ? 0 : undefined}
+      onClick={handleSelectionClick}
+      onKeyDown={handleSelectionKeyDown}
       onPointerEnter={() => onPrefetchDetails?.(subscription.id)}
       onFocusCapture={() => onPrefetchDetails?.(subscription.id)}
       className={cn(
         "group relative h-full overflow-hidden rounded-xl border border-border bg-card p-5 shadow-card transition-all duration-300 hover:bg-card-hover",
         onViewDetails && "cursor-pointer",
+        selectionMode && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        selectionMode && selected && "border-primary/50 bg-primary/5 ring-1 ring-primary/30",
         isInactive && "border-muted bg-muted/20 hover:bg-muted/30",
         isRenewingSoon && "border-warning/40",
         isTrialEndingSoon && "animate-pulse-glow"
       )}
     >
-      {onViewDetails ? (
+      {selectionMode ? (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onSelect?.(subscription.id, checked === true)}
+          className="absolute left-3 top-3 z-20 h-5 w-5"
+          aria-label={t("subscriptions.bulkVisibilitySelectSubscription", { name: subscription.name })}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ) : null}
+      {onViewDetails && !selectionMode ? (
         <button
           type="button"
           aria-label={t("subscription.viewDetailsLabel", { name: subscription.name })}
@@ -361,7 +407,7 @@ function SubscriptionCardComponent({
           data-testid="subscription-card-primary-action"
         />
       ) : null}
-      <div className={cn("relative z-10 flex items-start gap-4", onViewDetails && "pointer-events-none")}>
+      <div className={cn("relative z-10 flex items-start gap-4", onViewDetails && !selectionMode && "pointer-events-none")}>
         <SubscriptionLogo name={subscription.name} logo={subscription.logo} fallbackColor={categoryColor} size="md" />
 
         <div className="min-w-0 flex-1 grid gap-3">
@@ -400,12 +446,19 @@ function SubscriptionCardComponent({
                   variant="ghost"
                   size="icon"
                   className="pointer-events-auto h-8 w-8 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                  ref={moreActionsRef}
                   aria-label={t("subscription.moreActions")}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className={CARD_ACTION_MENU_CONTENT_CLASSNAME}>
+                {selectionMode && onViewDetails ? (
+                  <DropdownMenuItem className={CARD_ACTION_MENU_ITEM_CLASSNAME} onClick={handleViewDetails}>
+                    <Eye className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {t("subscription.viewDetailsMenuLabel")}
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem className={CARD_ACTION_MENU_ITEM_CLASSNAME} onClick={() => onEdit?.(subscription.id)}>
                   <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" />
                   {t("common.edit")}
@@ -428,7 +481,7 @@ function SubscriptionCardComponent({
                     onPointerEnter={preloadRenewSubscriptionDialog}
                     onFocus={preloadRenewSubscriptionDialog}
                     onTouchStart={preloadRenewSubscriptionDialog}
-                    onClick={() => onRenew?.(subscription.id)}
+                    onClick={() => onRenew?.(subscription.id, moreActionsRef.current)}
                   >
                     <RotateCw className="h-4 w-4 shrink-0 text-muted-foreground" />
                     {t("subscription.renew")}
@@ -484,6 +537,12 @@ function SubscriptionCardComponent({
               >
                 {renewalBadgeLabel}
               </Badge>
+              {selectionMode ? (
+                <Badge variant={subscription.publicHidden ? "secondary" : "outline"} className="shrink-0 gap-1 whitespace-nowrap px-2 text-xs sm:px-2.5">
+                  {subscription.publicHidden ? <EyeOff className="h-3 w-3" aria-hidden="true" /> : <Eye className="h-3 w-3" aria-hidden="true" />}
+                  {subscription.publicHidden ? t("subscription.publicVisibilityHidden") : t("subscription.publicVisibilityVisible")}
+                </Badge>
+              ) : null}
             </div>
           </div>
 
@@ -551,6 +610,9 @@ function areSubscriptionCardPropsEqual(prev: SubscriptionCardProps, next: Subscr
     prev.onClone === next.onClone &&
     prev.onTogglePinned === next.onTogglePinned &&
     prev.onTogglePublicHidden === next.onTogglePublicHidden &&
+    prev.selectionMode === next.selectionMode &&
+    prev.selected === next.selected &&
+    prev.onSelect === next.onSelect &&
     prev.onRenew === next.onRenew &&
     prev.onAddToCalendar === next.onAddToCalendar &&
     prev.onPrefetchDetails === next.onPrefetchDetails &&

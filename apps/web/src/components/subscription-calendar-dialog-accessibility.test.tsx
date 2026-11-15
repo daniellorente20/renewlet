@@ -306,6 +306,25 @@ describe("SubscriptionCalendar dialogs", () => {
     expect(screen.queryByText("Cancelled Tool")).not.toBeInTheDocument();
   });
 
+  it("places a trial subscription on its earlier trial end date", async () => {
+    mockMobileCalendar();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T12:00:00Z"));
+
+    renderCalendar([
+      subscription({
+        id: "trial-early-end",
+        name: "Trial Plan",
+        status: "trial",
+        trialEndDate: assertDateOnly("2026-05-16"),
+        nextBillingDate: assertDateOnly("2026-06-01"),
+      }),
+    ]);
+
+    expect(screen.getByRole("button", { name: "5月16日 1 个事件" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Trial Plan/ })).toBeInTheDocument();
+  });
+
   it("includes one-time fixed term expiries in the calendar while hiding buyouts", async () => {
     mockMobileCalendar();
     vi.useFakeTimers();

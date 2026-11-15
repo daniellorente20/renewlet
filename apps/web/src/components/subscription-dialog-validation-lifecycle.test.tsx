@@ -19,12 +19,18 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/contexts/CustomConfigContext", () => ({
   useCustomConfigState: () => ({ config: mocks.config }),
+  useLunarCalendar: () => ({ enabled: false, supported: true }),
 }));
 
 vi.mock("@/hooks/use-settings", () => ({
   useSettings: () => ({
     data: { defaultCurrency: "USD", notificationReminderDays: 5 },
   }),
+}));
+
+// 本组只验证字段校验切换；汇率请求、缓存和降级由独立 Hook 测试覆盖。
+vi.mock("@/hooks/use-exchange-rates", () => ({
+  useExchangeRates: () => ({ convert: (amount: number) => amount }),
 }));
 
 vi.mock("@/components/logo-picker", () => ({

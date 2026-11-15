@@ -198,7 +198,10 @@ func applyRouteTestAuth(req *http.Request, token string) {
 }
 
 func applyRouteTestSameOrigin(req *http.Request) {
-	// 测试请求要模拟浏览器最终到达服务端后的 Origin；先应用 X-Forwarded-Proto，再生成同源头。
+	// 测试请求模拟浏览器最终到达服务端后的 Origin；显式 Origin/Referer 用于拒绝路径时必须原样保留。
+	if req.Header.Get("Origin") != "" || req.Header.Get("Referer") != "" {
+		return
+	}
 	if origin := requestOrigin(req); origin != "" {
 		req.Header.Set("Origin", origin)
 	}

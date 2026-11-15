@@ -21,23 +21,22 @@ import { DEFAULT_SETTINGS, type AppSettings, type NotificationChannel } from "@/
 import type { ThemeMode } from "@/types/theme";
 import { BUILT_IN_ICON_PROVIDERS, type BuiltInIconProvider } from "@renewlet/shared/built-in-icons";
 import { SettingsScreen } from "./settings-screen";
+import type { SettingsSectionId } from "./settings-section-navigation";
 import { NotificationChannelConfigPanel } from "./notification-channel-config-panel";
 import type { UploadedAssetsManagerController } from "../application/use-uploaded-assets-manager";
 import type { SettingsAuthSecurityController } from "../application/use-auth-security-settings-controller";
 import type { SettingsTelegramBotCommandsController } from "../application/use-telegram-bot-commands-controller";
 import type { SettingsFormController } from "../application/settings-form-controller-types";
 import type { SettingsCalendarFeedController } from "../application/use-calendar-feed-settings-controller";
-import type { CloudBackupController } from "../application/use-cloud-backup-controller";
+import { createCloudBackupControllerState } from "./cloud-backup-controller-test-utils";
 import type { SettingsReadState } from "../application/settings-read-state";
 import { MFA_STATUS_QUERY_KEY, PASSKEYS_QUERY_KEY } from "./account-security-query-keys";
-
 const mocks = vi.hoisted(() => ({
   useSettingsFormController: vi.fn(),
   useCalendarFeedSettingsController: vi.fn(),
   useCloudBackupController: vi.fn(),
   useUploadedAssetsManager: vi.fn(),
 }));
-
 export { mocks };
 
 export const SETTINGS_SECTION_IDS = [
@@ -112,7 +111,6 @@ export function useStatefulMonthlyBudgetController(initialBudget = "10000") {
     },
   };
 }
-
 function iconProviderVersion(provider: BuiltInIconProvider) {
   const commitSha = provider === "thesvg"
     ? "aaa111122223333444455556666777788889999"
@@ -221,13 +219,44 @@ vi.mock("@/components/header", () => ({
 
 vi.mock("@/contexts/CustomConfigContext", async () => {
   const { DEFAULT_CUSTOM_CONFIG: defaultConfig } = await import("@/types/config");
-  return { useCustomConfigState: () => ({ config: defaultConfig }) };
+  return { useCustomConfigState: () => ({ config: defaultConfig }), useLunarCalendar: () => ({ enabled: false, supported: true }) };
 });
 
 vi.mock("./settings-advanced-sections-loader", async () => {
-  const module = await import("./settings-advanced-sections");
+  const [resourcesAi, budgetData, cloudCalendar, publicNotifications] = await Promise.all([
+    import("./settings-advanced-group-resources-ai"),
+    import("./settings-advanced-group-budget-data"),
+    import("./settings-advanced-group-cloud-calendar"),
+    import("./settings-advanced-group-public-notifications"),
+  ]);
+  const ResourcesAiGroup = resourcesAi.SettingsAdvancedResourcesAiGroup;
+  const BudgetDataGroup = budgetData.SettingsAdvancedBudgetDataGroup;
+  const CloudCalendarGroup = cloudCalendar.SettingsAdvancedCloudCalendarGroup;
+  const PublicNotificationsGroup = publicNotifications.SettingsAdvancedPublicNotificationsGroup;
   return {
-    DeferredSettingsAdvancedSections: module.SettingsAdvancedSections,
+    DeferredSettingsAdvancedSections: ({ controller, onReady }: {
+      controller: Parameters<typeof ResourcesAiGroup>[0]["controller"];
+      onReady: (sectionIds: readonly SettingsSectionId[]) => void;
+    }) => (
+      <>
+        <ResourcesAiGroup
+          controller={controller}
+          onReady={() => onReady(["settings-icon-sources", "settings-uploaded-icons", "settings-ai-recognition"])}
+        />
+        <BudgetDataGroup
+          controller={controller}
+          onReady={() => onReady(["settings-budget", "settings-data-config", "settings-exchange"])}
+        />
+        <CloudCalendarGroup
+          controller={controller}
+          onReady={() => onReady(["settings-cloud-backup", "settings-calendar-feed"])}
+        />
+        <PublicNotificationsGroup
+          controller={controller}
+          onReady={() => onReady(["settings-public-status", "settings-public-api", "settings-timezone", "settings-notifications"])}
+        />
+      </>
+    ),
     preloadSettingsAdvancedSections: vi.fn(),
   };
 });
@@ -359,74 +388,6 @@ export function createUploadedAssetsManagerState(
   };
 }
 
-export function createCloudBackupControllerState(): CloudBackupController {
-  const fn = vi.fn();
-  const defaultPolicy = {
-    scheduleEnabled: false,
-    scheduleFrequency: "daily" as const,
-    scheduleTime: "03:00",
-    scheduleWeekday: "monday" as const,
-    retention: 7,
-  };
-  const defaultStatus = {
-    lastBackupAt: null,
-    lastStatus: "idle" as const,
-    lastError: null,
-    updatedAt: null,
-  };
-  return {
-    config: createSettingsReadState({
-      provider: "webdav" as const,
-      credentialSet: false,
-      credentialSetByProvider: { webdav: false, s3: false },
-      policyByProvider: { webdav: defaultPolicy, s3: defaultPolicy },
-      statusByProvider: { webdav: defaultStatus, s3: defaultStatus },
-      updatedAt: null,
-    }),
-    snapshots: createSettingsReadState([]),
-    isInitialLayoutReady: true,
-    form: {
-      provider: "webdav" as const,
-      webdavUrl: "",
-      webdavUsername: "",
-      webdavPassword: "",
-      webdavPath: "renewlet",
-      s3Endpoint: "",
-      s3Region: "",
-      s3Bucket: "",
-      s3Prefix: "renewlet",
-      s3AccessKeyId: "",
-      s3SecretAccessKey: "",
-      scheduleEnabled: false,
-      scheduleFrequency: "daily" as const,
-      scheduleTime: "03:00",
-      scheduleWeekday: "monday" as const,
-      retention: "7",
-    },
-    credentialSet: false,
-    canCreateSnapshot: false,
-    isSaving: false,
-    isTesting: false,
-    isCreating: false,
-    isDownloading: false,
-    isDeleting: false,
-    restoringSnapshotKey: null,
-    deletingSnapshotKey: null,
-    hasUnsavedChanges: false,
-    snapshotsErrorMessage: null,
-    cloudBackupErrorDetails: null,
-    cloudBackupErrorDetailsOpen: false,
-    setCloudBackupErrorDetailsOpen: fn,
-    openSnapshotsErrorDetails: fn,
-    updateForm: fn,
-    saveConfig: fn,
-    testConfig: fn,
-    createSnapshot: fn,
-    restoreSnapshot: fn,
-    deleteSnapshot: fn,
-  };
-}
-
 export function createControllerState(overrides: {
   settings?: Partial<AppSettings>;
   effectiveThemeMode?: ThemeMode;
@@ -449,8 +410,12 @@ export function createControllerState(overrides: {
     enabled?: boolean;
     pageUrl?: string | null;
     showPrices?: boolean;
+    hideExpired?: boolean;
+    hideLifetime?: boolean;
     visibleCount?: number;
     hiddenCount?: number;
+    expiredCount?: number;
+    lifetimeCount?: number;
   };
   publicApi?: {
     tokens?: Array<{
@@ -480,6 +445,10 @@ export function createControllerState(overrides: {
   externalIntegrationsDisabled?: boolean;
   sensitiveAccountActionsDisabled?: boolean;
   sensitiveAccountActionsDemoDisabled?: boolean;
+  appStatusHasError?: boolean;
+  appStatusHasData?: boolean;
+  appStatusIsRefreshing?: boolean;
+  retryAppStatus?: () => Promise<unknown>;
   customConfig?: CustomConfig;
 } = {}) {
   const fn = vi.fn();
@@ -534,7 +503,7 @@ export function createControllerState(overrides: {
       categoryCounts: {},
       tags: [],
       visibleCount: 0,
-      hiddenCount: 0,
+      hiddenCount: 0, expiredCount: 0, lifetimeCount: 0,
     }),
     categoryUsageCount: new Map(),
     rates: overrides.rates ?? {},
@@ -626,10 +595,14 @@ export function createControllerState(overrides: {
         enabled: overrides.publicStatusPage?.enabled ?? Boolean(overrides.publicStatusPage?.pageUrl),
         pageUrl: overrides.publicStatusPage?.pageUrl ?? undefined,
         showPrices: overrides.publicStatusPage?.showPrices ?? false,
+        hideExpired: overrides.publicStatusPage?.hideExpired ?? false,
+        hideLifetime: overrides.publicStatusPage?.hideLifetime ?? false,
       }),
       visibility: createSettingsReadState({
         visibleCount: overrides.publicStatusPage?.visibleCount ?? 0,
         hiddenCount: overrides.publicStatusPage?.hiddenCount ?? 0,
+        expiredCount: overrides.publicStatusPage?.expiredCount ?? 0,
+        lifetimeCount: overrides.publicStatusPage?.lifetimeCount ?? 0,
       }),
       isCreating: false,
       isDeleting: false,
@@ -640,6 +613,9 @@ export function createControllerState(overrides: {
       regenerate: fn,
       revoke: fn,
       updateShowPrices: fn,
+      updateHideExpired: fn,
+      updateHideLifetime: fn,
+      bulkPublicVisibility: fn,
     },
     publicApi: {
       tokens: createSettingsReadState(overrides.publicApi?.tokens ?? []),
@@ -710,6 +686,10 @@ export function createControllerState(overrides: {
     externalIntegrationsDisabled: overrides.externalIntegrationsDisabled ?? false,
     sensitiveAccountActionsDisabled: overrides.sensitiveAccountActionsDisabled ?? false,
     sensitiveAccountActionsDemoDisabled: overrides.sensitiveAccountActionsDemoDisabled ?? false,
+    appStatusHasError: overrides.appStatusHasError ?? false,
+    appStatusHasData: overrides.appStatusHasData ?? true,
+    appStatusIsRefreshing: overrides.appStatusIsRefreshing ?? false,
+    retryAppStatus: overrides.retryAppStatus ?? vi.fn().mockResolvedValue(undefined),
   } satisfies SettingsFormController;
 }
 
@@ -754,7 +734,12 @@ export function createCalendarFeedControllerState(
 
 function RouteProbe() {
   const location = useLocation();
-  return <div data-testid="route-path">{location.pathname}</div>;
+  return (
+    <>
+      <div data-testid="route-path">{location.pathname}</div>
+      <div data-testid="route-hash">{location.hash}</div>
+    </>
+  );
 }
 
 export function renderSettingsScreen(initialEntries = ["/settings"]) {

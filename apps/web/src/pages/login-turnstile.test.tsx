@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   cancelPasskeyCeremony: vi.fn(),
   reportClientError: vi.fn(),
   usePasswordResetAvailability: vi.fn(),
-  useSetupStatus: vi.fn(),
+  useAppStatus: vi.fn(),
   setTheme: vi.fn(),
   resolvedTheme: "dark" as "light" | "dark",
 }));
@@ -57,8 +57,8 @@ vi.mock("@/lib/report-client-error", () => ({
   reportClientError: mocks.reportClientError,
 }));
 
-vi.mock("@/hooks/use-setup-status", () => ({
-  useSetupStatus: mocks.useSetupStatus,
+vi.mock("@/hooks/use-app-status", () => ({
+  useAppStatus: mocks.useAppStatus,
 }));
 
 vi.mock("@/lib/theme-provider", () => ({
@@ -114,12 +114,19 @@ describe("Login page Turnstile protection", () => {
     mocks.setTheme.mockReset();
     mocks.resolvedTheme = "dark";
     mocks.usePasswordResetAvailability.mockReturnValue(false);
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: false,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: false, siteKey: "" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: false,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: false, siteKey: "" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
   });
 
@@ -131,12 +138,19 @@ describe("Login page Turnstile protection", () => {
 
   it("submits the Turnstile token together with email password login", async () => {
     const user = userEvent.setup();
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: false,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: true, siteKey: "site-key" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: false,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: true, siteKey: "site-key" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
     renderLogin();
 
@@ -162,12 +176,19 @@ describe("Login page Turnstile protection", () => {
 
   it("passes the resolved light theme into the Turnstile widget", () => {
     mocks.resolvedTheme = "light";
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: false,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: true, siteKey: "site-key" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: false,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: true, siteKey: "site-key" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
 
     renderLogin();
@@ -177,12 +198,19 @@ describe("Login page Turnstile protection", () => {
 
   it("resets the widget after a failed email password login", async () => {
     const user = userEvent.setup();
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: false,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: true, siteKey: "site-key" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: false,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: true, siteKey: "site-key" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
     mocks.signInEmail.mockResolvedValueOnce({ error: new Error("invalid credentials") });
     renderLogin();

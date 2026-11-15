@@ -73,4 +73,8 @@ export interface SettingsFormController {
   externalIntegrationsDisabled: boolean;
   sensitiveAccountActionsDisabled: boolean;
   sensitiveAccountActionsDemoDisabled: boolean;
+  appStatusHasError: boolean;
+  appStatusHasData: boolean;
+  appStatusIsRefreshing: boolean;
+  retryAppStatus: () => Promise<unknown>;
 }

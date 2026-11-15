@@ -9,11 +9,16 @@ vi.mock("@/i18n/I18nProvider", () => ({
     locale: "zh-CN",
     t: (key: string, params?: Record<string, string | number>) => {
       const messages: Record<string, string> = {
-        "upcoming.noneNextTwoWeeks": "暂无进入提醒窗口的续费或到期",
+        "upcoming.noneNextTwoWeeks": "暂无未来续费或到期",
         "upcoming.todayShort": "今",
         "upcoming.daysShort": "{days}天",
         "upcoming.renewsOn": "{date} 续费",
         "upcoming.expiresOn": "{date} 到期",
+        "subscription.card.trialEnds": "试用期将于 {date} 结束",
+        "subscription.oneTimeMode.term": "固定服务期",
+        "subscription.renewal.auto": "自动续订",
+        "subscription.renewal.manual": "手动续订",
+        "subscription.reminderEnabledHelp": "按此订阅的到期或续费日期发送提醒。",
       };
       let value = messages[key] ?? key;
       for (const [name, replacement] of Object.entries(params ?? {})) {
@@ -70,18 +75,19 @@ describe("UpcomingRenewals", () => {
     vi.useRealTimers();
   });
 
-  it("shows subscriptions inside their effective reminder window", () => {
+  it("shows future subscriptions outside the reminder window", () => {
     render(
       <UpcomingRenewals
         subscriptions={[subscription()]}
         today="2026-06-15"
-        notificationReminderDays={3}
       />,
     );
 
     expect(screen.getByText("Netflix")).toBeInTheDocument();
     expect(screen.getByText("30天")).toBeInTheDocument();
     expect(screen.getByText("USD 10")).toBeInTheDocument();
+    expect(screen.getByText("手动续订")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "按此订阅的到期或续费日期发送提醒。" })).toBeInTheDocument();
   });
 
   it("shares compact columns while only the subscription name can shrink and wrap", () => {
@@ -89,7 +95,6 @@ describe("UpcomingRenewals", () => {
       <UpcomingRenewals
         subscriptions={[subscription({ name: "AnExtremelyLongSubscriptionNameWithoutNaturalBreaks" })]}
         today="2026-06-15"
-        notificationReminderDays={3}
       />,
     );
 
@@ -111,16 +116,48 @@ describe("UpcomingRenewals", () => {
     expect(price).toHaveClass("whitespace-nowrap", "text-right", "tabular-nums");
   });
 
-  it("uses the reminder-window empty state instead of the old two-week copy", () => {
+  it("keeps reminder-disabled subscriptions visible without the Bell indicator", () => {
     render(
       <UpcomingRenewals
-        subscriptions={[subscription({ reminderDays: 14 })]}
+        subscriptions={[subscription({ reminderDays: -2 })]}
         today="2026-06-15"
-        notificationReminderDays={3}
       />,
     );
 
-    expect(screen.getByText("暂无进入提醒窗口的续费或到期")).toBeInTheDocument();
-    expect(screen.queryByText("未来两周内无续费或到期")).not.toBeInTheDocument();
+    expect(screen.getByText("Netflix")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "按此订阅的到期或续费日期发送提醒。" })).not.toBeInTheDocument();
+  });
+
+  it("uses the earlier trial end date and shows automatic renewal state", () => {
+    render(
+      <UpcomingRenewals
+        subscriptions={[subscription({ status: "trial", autoRenew: true, trialEndDate: assertDateOnly("2026-06-20"), nextBillingDate: assertDateOnly("2026-07-15") })]}
+        today="2026-06-15"
+      />,
+    );
+
+    expect(screen.getByText("5天")).toBeInTheDocument();
+    expect(screen.getByText("试用期将于 6月20日 结束")).toBeInTheDocument();
+    expect(screen.getByText("自动续订")).toBeInTheDocument();
+  });
+
+  it("keeps the compact five-item presentation limit after sorting all events", () => {
+    const subscriptions = Array.from({ length: 6 }, (_, index) => subscription({
+      id: `subscription-${index}`,
+      name: `Subscription ${index}`,
+      nextBillingDate: assertDateOnly(`2026-06-${String(16 + index).padStart(2, "0")}`),
+    }));
+
+    render(<UpcomingRenewals subscriptions={subscriptions} today="2026-06-15" />);
+
+    expect(screen.getByText("Subscription 0")).toBeInTheDocument();
+    expect(screen.getByText("Subscription 4")).toBeInTheDocument();
+    expect(screen.queryByText("Subscription 5")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state only when no eligible future event exists", () => {
+    render(<UpcomingRenewals subscriptions={[]} today="2026-06-15" />);
+
+    expect(screen.getByText("暂无未来续费或到期")).toBeInTheDocument();
   });
 });

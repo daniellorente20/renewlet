@@ -10,8 +10,8 @@ import {
   useQuery,
   type QueryClient,
 } from "@tanstack/react-query";
-import { pb } from "@/lib/pocketbase";
 import { ApiError } from "@/lib/api-client";
+import { appQueryClient } from "@/lib/app-query-client";
 import { getLocaleHeaders } from "@/i18n/api-locale";
 import {
   getProductCsrfHeader,
@@ -244,6 +244,9 @@ export const authClient = {
 
   async signOut() {
     try {
+      // 先清掉本地 session 让受保护页面卸载，再取消查询并撤销服务端 session；否则自动挂载的设置读取会在 logout 后落成 401。
+      writeProductSession(null);
+      await appQueryClient.cancelQueries();
       await fetch("/api/app/auth/logout", { method: "POST", headers: getProductCsrfHeader(), credentials: "include" });
     } finally {
       writeProductSession(null);
@@ -255,7 +258,8 @@ export const authClient = {
       void email;
       throw new Error(CLOUDFLARE_PASSWORD_RESET_DISABLED);
     }
-    await pb.collection("users").requestPasswordReset(email);
+    const { passwordResetService } = await import("@/services/password-reset-service");
+    await passwordResetService.request(email);
   },
 
   async confirmPasswordReset(token: string, password: string) {
@@ -264,6 +268,7 @@ export const authClient = {
       void password;
       throw new Error(CLOUDFLARE_PASSWORD_RESET_DISABLED);
     }
-    await pb.collection("users").confirmPasswordReset(token, password, password);
+    const { passwordResetService } = await import("@/services/password-reset-service");
+    await passwordResetService.confirm(token, password);
   },
 };

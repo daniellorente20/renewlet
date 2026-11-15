@@ -11,11 +11,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { MAX_MONEY_STRING, MONEY_DECIMAL_SCALE } from "../packages/shared/src/money.ts";
+import { MAX_MONEY_STRING, MONEY_DECIMAL_SCALE } from "@renewlet/shared/money";
 import {
   publicApiDocumentationSchemas,
   publicApiEndpointDocs,
-} from "../packages/shared/src/public-api-docs.ts";
+} from "@renewlet/shared/public-api-docs";
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const checkMode = process.argv.includes("--check");
@@ -24,7 +24,7 @@ const markdownPath = path.join(rootDir, "docs/public-api.md");
 const goRoutesPath = path.join(rootDir, "apps/docker-server/cmd/renewlet/routes.go");
 const workerRoutesPath = path.join(rootDir, "apps/worker/src/index.ts");
 const publicApiTag = "Public API";
-const publicApiMoneyPropertyNames = new Set(["price", "customAmount"]);
+const publicApiMoneyPropertyNames = new Set(["price", "balance", "customAmount"]);
 const publicApiDateOnlyPropertyNames = new Set(["joinedDate"]);
 const allowedEmptyComponentSchemaPaths = new Set([
   "components.schemas.PublicApiErrorResponse.properties.error.properties.details",

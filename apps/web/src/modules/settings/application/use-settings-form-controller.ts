@@ -26,7 +26,7 @@ import { useReportExchangeRates } from "@/hooks/use-report-exchange-rates";
 import { useSettingsEnvelope, useUpdateSettings } from "@/hooks/use-settings";
 import { useSubscriptionFacets } from "@/hooks/use-subscriptions";
 import { usePasswordResetAvailability } from "@/hooks/use-password-reset-availability";
-import { useSetupStatus } from "@/hooks/use-setup-status";
+import { useAppStatus } from "@/hooks/use-app-status";
 import { toast } from "@/components/ui/sonner";
 import { getDisplayErrorMessage } from "@/lib/display-error";
 import type { RawErrorResponseDetails } from "@/lib/raw-error-response";
@@ -115,11 +115,13 @@ export function useSettingsFormController(): SettingsFormController {
   } = useReportExchangeRates(savedSettings.exchangeRateProvider);
   const ratesRefreshPending = ratesLoading || ratesRefreshing;
   const { t, commitLocalePreference, syncRemoteLocalePreference } = useI18n();
-  const appStatus = useSetupStatus();
-  const externalIntegrationsDisabled = appStatus.isLoading || appStatus.demoMode;
+  const appStatus = useAppStatus();
+  const appStatusReady = appStatus.status === "ready";
+  const appStatusDemoMode = appStatusReady && appStatus.data?.demoMode === true;
+  const externalIntegrationsDisabled = !appStatusReady || appStatusDemoMode;
   // demo 模式同时禁用外部集成和账号安全写操作；这里拆成两个语义，避免后续把密码/MFA/Passkey 误归到外部集成策略里。
-  const sensitiveAccountActionsDisabled = appStatus.isLoading || appStatus.demoMode;
-  const sensitiveAccountActionsDemoDisabled = appStatus.demoMode;
+  const sensitiveAccountActionsDisabled = !appStatusReady || appStatusDemoMode;
+  const sensitiveAccountActionsDemoDisabled = appStatusDemoMode;
   const password = usePasswordChange();
   const passwordResetEnabled = usePasswordResetAvailability();
   const {
@@ -141,12 +143,10 @@ export function useSettingsFormController(): SettingsFormController {
   const canRefreshBuiltInIconIndex = accountIdentity.role === "admin";
   const builtInIconIndex = useSettingsBuiltInIconIndexController(canRefreshBuiltInIconIndex);
   const authSecurity = useAuthSecuritySettingsController(canManageUsers, sensitiveAccountActionsDisabled);
-  const refetchNotificationHistory = useCallback(async () => {
-    await Promise.all([
-      notificationHistory.overview.retry(),
-      notificationHistory.history.retry(),
-    ]);
-  }, [notificationHistory.history, notificationHistory.overview]);
+  const refetchNotificationHistoryList = useCallback(async () => {
+    // overview 由 useUpdateSettings 成功后的统一失效负责；这里仅刷新历史分页，避免同一次保存重复请求概览。
+    await notificationHistory.history.retry();
+  }, [notificationHistory.history]);
   const hasInitializedFromRemoteRef = useRef(false);
   const hasResolvedDefaultRecipientEmailRef = useRef(false);
   const settingsDirtyRef = useRef(false);
@@ -396,7 +396,7 @@ export function useSettingsFormController(): SettingsFormController {
         setMonthlyBudgetInput(String(saved.monthlyBudget));
         setMonthlyBudgetError(null);
         syncSavedPreviewState(saved, { syncAppearance: appearanceChanged, rememberLocalePreference: localeChanged });
-        void refetchNotificationHistory();
+        void refetchNotificationHistoryList();
         // Bot 命令安装状态读取的是已保存凭据；保存 token/chat 后要主动刷新，不能等低频 query 自然过期。
         void refetchTelegramBotCommands();
         if (providerChanged) {
@@ -449,7 +449,7 @@ export function useSettingsFormController(): SettingsFormController {
     hasUnsavedChanges,
     isSavingSettings,
     monthlyBudgetError,
-    refetchNotificationHistory,
+    refetchNotificationHistoryList,
     refreshRates,
     saveConfig,
     savedSettings,
@@ -595,5 +595,9 @@ export function useSettingsFormController(): SettingsFormController {
     externalIntegrationsDisabled,
     sensitiveAccountActionsDisabled,
     sensitiveAccountActionsDemoDisabled,
+    appStatusHasError: appStatus.status === "error",
+    appStatusHasData: appStatus.data !== null,
+    appStatusIsRefreshing: appStatus.isRefreshing,
+    retryAppStatus: appStatus.retry,
   };
 }

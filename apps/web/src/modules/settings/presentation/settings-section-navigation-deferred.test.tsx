@@ -1,6 +1,7 @@
 import { createRef, forwardRef, useImperativeHandle } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SETTINGS_SECTIONS,
@@ -20,12 +21,21 @@ const DEFERRED_SECTION_IDS: readonly SettingsSectionId[] = [
   "settings-calendar-feed",
   "settings-notifications",
 ];
+const RESOURCES_AI_SECTION_IDS: readonly SettingsSectionId[] = [
+  "settings-icon-sources",
+  "settings-uploaded-icons",
+  "settings-ai-recognition",
+];
+const CLOUD_CALENDAR_SECTION_IDS: readonly SettingsSectionId[] = [
+  "settings-cloud-backup",
+  "settings-calendar-feed",
+];
 const TEST_SECTIONS: SettingsSectionList = SETTINGS_SECTIONS.filter((section) =>
   TEST_SECTION_IDS.some((id) => id === section.id)
 );
 
 type NavigationHarnessHandle = {
-  markDeferredSectionsReady: () => void;
+  markDeferredSectionsReady: (sectionIds: readonly SettingsSectionId[]) => void;
 };
 
 const NavigationHarness = forwardRef<NavigationHarnessHandle>(function NavigationHarness(_, ref) {
@@ -37,9 +47,11 @@ const NavigationHarness = forwardRef<NavigationHarnessHandle>(function Navigatio
     deferredSectionIds: DEFERRED_SECTION_IDS,
   });
   useImperativeHandle(ref, () => ({ markDeferredSectionsReady }), [markDeferredSectionsReady]);
+  const location = useLocation();
 
   return (
     <div id="root">
+      <output data-testid="route-hash">{location.hash}</output>
       <nav aria-label="设置目录测试">
         {TEST_SECTIONS.map((section) => (
           <a
@@ -56,7 +68,7 @@ const NavigationHarness = forwardRef<NavigationHarnessHandle>(function Navigatio
         ))}
       </nav>
       {TEST_SECTIONS.map((section) => (
-        <section key={section.id} id={section.id}>{section.id}</section>
+        <section key={section.id} id={section.id} aria-busy={DEFERRED_SECTION_IDS.includes(section.id) ? "true" : undefined}>{section.id}</section>
       ))}
     </div>
   );
@@ -79,9 +91,13 @@ function setElementRect(element: Element, top: number, height = 160) {
   });
 }
 
-function renderNavigation() {
+function renderNavigation(initialEntry = "/settings") {
   const readyRef = createRef<NavigationHarnessHandle>();
-  render(<NavigationHarness ref={readyRef} />);
+  render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <NavigationHarness ref={readyRef} />
+    </MemoryRouter>,
+  );
   const root = document.getElementById("root");
   if (!(root instanceof HTMLElement)) throw new Error("Missing settings scroll root");
   setElementRect(root, 0, 800);
@@ -106,8 +122,8 @@ function renderNavigation() {
       if (!spy) throw new Error(`Missing scroll spy: ${id}`);
       return spy;
     },
-    markReady() {
-      act(() => readyRef.current?.markDeferredSectionsReady());
+    markReady(sectionIds: readonly SettingsSectionId[]) {
+      act(() => readyRef.current?.markDeferredSectionsReady(sectionIds));
     },
   };
 }
@@ -135,21 +151,82 @@ describe("deferred settings section navigation", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("waits for committed content before scrolling to a deferred section once", async () => {
+  it("scrolls to the deferred skeleton immediately and corrects after commit", async () => {
     const user = userEvent.setup();
     const navigation = renderNavigation();
 
     await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
 
-    expect(window.location.hash).toBe("#settings-calendar-feed");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("#settings-calendar-feed");
     expect(screen.getByRole("link", { name: "settings-calendar-feed" })).toHaveAttribute("aria-current", "location");
-    expect(navigation.scrollSpy("settings-calendar-feed")).not.toHaveBeenCalled();
+    expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
 
-    navigation.markReady();
-    navigation.markReady();
+    navigation.scrollSpy("settings-calendar-feed").mockClear();
+    navigation.markReady(RESOURCES_AI_SECTION_IDS);
+    expect(navigation.scrollSpy("settings-calendar-feed")).not.toHaveBeenCalled();
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
 
     await waitFor(() => {
-      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalledTimes(1);
+      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
+    });
+  });
+
+  it("realigns a committed section even when it still covers the active anchor", async () => {
+    const user = userEvent.setup();
+    const navigation = renderNavigation();
+    const calendarSection = document.getElementById("settings-calendar-feed")!;
+    setElementRect(calendarSection, 100, 1000);
+    setElementRect(document.getElementById("settings-display")!, -1100);
+    setElementRect(document.getElementById("settings-cloud-backup")!, -950);
+    setElementRect(document.getElementById("settings-notifications")!, 800);
+
+    await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
+    navigation.scrollSpy("settings-calendar-feed").mockClear();
+    setElementRect(calendarSection, -681, 1000);
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
+
+    await waitFor(() => {
+      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
+    });
+    expect(screen.getByRole("link", { name: "settings-calendar-feed" })).toHaveAttribute("aria-current", "location");
+  });
+
+  it("starts the correction window when a delayed deferred group commits", async () => {
+    const user = userEvent.setup();
+    const navigation = renderNavigation();
+    const now = vi.spyOn(performance, "now").mockReturnValue(0);
+
+    await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
+    navigation.scrollSpy("settings-calendar-feed").mockClear();
+    setCloudBackupAtAnchor();
+    now.mockReturnValue(2_001);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
+
+    await waitFor(() => {
+      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
+    });
+  });
+
+  it("corrects a later layout shift after the committed section initially settles", async () => {
+    const user = userEvent.setup();
+    const navigation = renderNavigation();
+    const calendarSection = document.getElementById("settings-calendar-feed")!;
+    setElementRect(calendarSection, 100);
+    setElementRect(document.getElementById("settings-notifications")!, 1200);
+
+    await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
+    act(() => navigation.root.dispatchEvent(new Event("scrollend")));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    navigation.scrollSpy("settings-calendar-feed").mockClear();
+    setElementRect(calendarSection, 881);
+    act(() => navigation.root.dispatchEvent(new Event("scrollend")));
+
+    await waitFor(() => {
+      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
     });
   });
 
@@ -157,6 +234,7 @@ describe("deferred settings section navigation", () => {
     const user = userEvent.setup();
     const navigation = renderNavigation();
     await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
+    navigation.scrollSpy("settings-calendar-feed").mockClear();
     setCloudBackupAtAnchor();
 
     act(() => {
@@ -172,12 +250,13 @@ describe("deferred settings section navigation", () => {
     const user = userEvent.setup();
     const navigation = renderNavigation();
     await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
+    navigation.scrollSpy("settings-calendar-feed").mockClear();
     setCloudBackupAtAnchor();
 
     act(() => {
       navigation.root.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
     });
-    navigation.markReady();
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
 
     expect(screen.getByRole("link", { name: "settings-cloud-backup" })).toHaveAttribute("aria-current", "location");
     expect(navigation.scrollSpy("settings-calendar-feed")).not.toHaveBeenCalled();
@@ -188,29 +267,29 @@ describe("deferred settings section navigation", () => {
     const navigation = renderNavigation();
 
     await user.click(screen.getByRole("link", { name: "settings-cloud-backup" }));
+    navigation.scrollSpy("settings-cloud-backup").mockClear();
     await user.click(screen.getByRole("link", { name: "settings-calendar-feed" }));
-    navigation.markReady();
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
 
     expect(navigation.scrollSpy("settings-cloud-backup")).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalledTimes(1);
+      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
     });
-    expect(window.location.hash).toBe("#settings-calendar-feed");
+    expect(screen.getByTestId("route-hash")).toHaveTextContent("#settings-calendar-feed");
   });
 
-  it("waits for commit before resolving an initial deferred section hash", async () => {
-    window.history.replaceState(null, "", "/settings#settings-calendar-feed");
-    const navigation = renderNavigation();
+  it("resolves an initial deferred section hash against the skeleton before commit", async () => {
+    const navigation = renderNavigation("/settings#settings-calendar-feed");
 
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "settings-calendar-feed" })).toHaveAttribute("aria-current", "location");
     });
-    expect(navigation.scrollSpy("settings-calendar-feed")).not.toHaveBeenCalled();
+    expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
 
-    navigation.markReady();
+    navigation.markReady(CLOUD_CALENDAR_SECTION_IDS);
 
     await waitFor(() => {
-      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalledTimes(1);
+      expect(navigation.scrollSpy("settings-calendar-feed")).toHaveBeenCalled();
     });
   });
 });

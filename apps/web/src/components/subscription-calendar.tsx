@@ -4,8 +4,8 @@
  * 架构位置：这里持有当前月份、选中订阅和单日列表状态，负责把订阅
  * 将 DateOnly 分组为日历网格；详情视图复用通用 SubscriptionDetailDialog。
  *
- * 注意： nextBillingDate 已经是 DateOnly，分组时不能重新用 Date 解析，
- * 否则浏览器时区会导致续费日期跨日。
+ * 注意：续费日期和试用结束日期都是 DateOnly，分组时不能重新用 Date 解析，
+ * 否则浏览器时区会导致事件跨日；事件日期由订阅领域模型统一解析。
  */
 
 import { useState, useMemo } from 'react';
@@ -30,11 +30,11 @@ import { dateOnlyToLocalDate, dateToDateOnly, isSameMonthDateOnly, todayDateOnly
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useI18n } from '@/i18n/I18nProvider';
-import { formatBillingCycleLabel, isOneTimeBuyout } from '@/lib/subscription-billing';
+import { formatBillingCycleLabel } from '@/lib/subscription-billing';
 import { SubscriptionDetailDialog } from '@/components/subscription-detail-dialog';
 import { DaySubscriptionsDialog } from './subscription-calendar-dialogs';
 import type { CalendarDaySubscriptions } from './subscription-calendar-dialogs';
-import { isEffectivelyActiveSubscription } from '@/modules/subscriptions/domain/subscription-status';
+import { resolveUpcomingSubscriptionEvent } from '@/modules/subscriptions/domain/upcoming-reminders';
 import { resolveSubscriptionPriceReferenceCurrency } from '@/modules/subscriptions/domain/subscription-price-reference';
 import { getSubscriptionCalendarRange } from '@/modules/subscriptions/domain/subscription-calendar-range';
 import { useSubscriptionDetailDialog } from '@/hooks/use-subscription-detail-dialog';
@@ -98,23 +98,22 @@ export const SubscriptionCalendar = ({
     () => WEEKDAY_REFERENCE_DATES.map((date) => formatDateTime(date, { weekday: "short" })),
     [formatDateTime],
   );
+  const calendarRange = useMemo(() => getSubscriptionCalendarRange(currentMonth), [currentMonth]);
 
-  // 将订阅按 “YYYY-MM-DD” 分组（同一天可能有多条订阅）。订阅日期已经是 DateOnly，
-  // 这里不能再用 Date 解析，否则不同浏览器/服务器时区会让日历跨日。
+  // 将订阅按领域解析后的事件日期分组；服务端查询同时覆盖 nextBillingDate 和 trialEndDate，
+  // 这里再按当前月范围收敛，避免候选日期在月份外时污染当前月的统计。
   const subscriptionsByDate = useMemo(() => {
     const map = new Map<string, SubscriptionCollectionItem[]>();
-    
-    subscriptions
-      // 日历展示真实扣费日和固定服务期到期日；one-time 买断没有下一次事件，不能把购买日塞进日历。
-      .filter(sub => isEffectivelyActiveSubscription(sub, today) && !isOneTimeBuyout(sub))
-      .forEach(sub => {
-        const dateKey = sub.nextBillingDate;
-        const existing = map.get(dateKey) || [];
-        map.set(dateKey, [...existing, sub]);
-      });
-    
+
+    for (const subscription of subscriptions) {
+      const event = resolveUpcomingSubscriptionEvent(subscription, today);
+      if (!event || event.dueDate < calendarRange.from || event.dueDate > calendarRange.to) continue;
+      const existing = map.get(event.dueDate) ?? [];
+      map.set(event.dueDate, [...existing, event.subscription]);
+    }
+
     return map;
-  }, [subscriptions, today]);
+  }, [subscriptions, today, calendarRange]);
 
   /**
    * 日历底部汇总：本月续费/到期事件数量 + 预计支出（换算到 defaultCurrency）。
@@ -141,12 +140,11 @@ export const SubscriptionCalendar = ({
 
   // 生成当前月视图需要展示的日期网格（包含前后补齐的周）
   const calendarDays = useMemo(() => {
-    const range = getSubscriptionCalendarRange(currentMonth);
     return eachDayOfInterval({
-      start: dateOnlyToLocalDate(range.from),
-      end: dateOnlyToLocalDate(range.to),
+      start: dateOnlyToLocalDate(calendarRange.from),
+      end: dateOnlyToLocalDate(calendarRange.to),
     });
-  }, [currentMonth]);
+  }, [calendarRange]);
 
   const monthlyAgendaGroups = useMemo(() => {
     return calendarDays

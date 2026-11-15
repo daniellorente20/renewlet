@@ -561,6 +561,25 @@ describe("Cloudflare app status", () => {
       turnstile: { enabled: false, siteKey: "" },
     });
   });
+
+  it("returns a stable unavailable error when a status dependency fails", async () => {
+    const env = envFixture(vi.fn());
+    env.DB.prepare = vi.fn(() => {
+      throw new Error("users table unavailable");
+    }) as unknown as D1Database["prepare"];
+
+    const response = await appStatus(new Request("https://renewlet.example/api/app/status"), env)
+      .catch((error: unknown) => toResponse(error));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "APP_STATUS_UNAVAILABLE",
+        requestId: expect.any(String),
+      },
+    });
+  });
 });
 
 function jsonRequest(path: string, method: string, body: unknown, headers: Record<string, string> = {}): Request {

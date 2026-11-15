@@ -509,6 +509,8 @@ describe("withPreviousPriceCapture", () => {
     user_id: "usr_owner",
     name: "Adobe Creative Cloud",
     logo: null,
+    balance: null,
+    balance_currency: null,
     price: "199",
     currency: "EUR",
     billing_cycle: "annual",

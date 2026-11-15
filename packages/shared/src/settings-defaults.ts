@@ -20,6 +20,7 @@ export function createDefaultAppSettings(options: DefaultSettingsOptions = {}): 
     themeCustomColor: DEFAULT_CUSTOM_THEME_COLOR,
     localePreference: DEFAULT_LOCALE_PREFERENCE,
     showExpired: true,
+    showLunarCalendar: false,
     defaultCurrency: "CNY",
     publicStatusCurrency: "inherit",
     subscriptionPriceReferenceEnabled: false,
@@ -74,7 +75,7 @@ export function createDefaultAppSettings(options: DefaultSettingsOptions = {}): 
     pushplusToken: "",
     aiRecognition: {
       providerType: "openai",
-      transportProtocol: "openai-chat",
+      transportProtocol: "openai-responses",
       model: "",
       modelInputMode: "select",
       baseUrl: "",

@@ -7,6 +7,13 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { runBackfill } from "./backfill-cloudflare-subscription-derived-state";
 import { subscriptionCollectionPageQueryPlan } from "../apps/worker/src/subscription-list-filters";
+import { LOCALE_PREFERENCES } from "@renewlet/shared/i18n-config";
+import {
+  assertD1TriggerDefinitions,
+  exclusiveMigrationNames,
+  exclusiveMigrationTriggerDefinitions,
+  settingsLocaleInvariantQuery,
+} from "./cloudflare-deploy";
 import {
   prepareCalendarFeedsFor0035,
   restoreCalendarFeedsAfter0035,
@@ -149,7 +156,7 @@ function openFixture(filename: string): SqliteUpgradeClient {
 }
 
 function seedUntrustedV2State(db: DatabaseSync): void {
-  // 旧 v2 marker 不能证明集合投影和调度状态可信；v3 必须从订阅事实重新收敛。
+  // 旧 v2/v3 marker 不能证明 cancelled 语义下的集合投影和调度状态可信；v4 必须从订阅事实重新收敛。
   db.prepare(`INSERT INTO subscription_derived_backfills (name, completed_at)
     VALUES ('subscription-derived-state-v2', ?)`).run(timestamp);
   db.prepare(`INSERT OR REPLACE INTO subscription_list_index (
@@ -359,7 +366,7 @@ function assertRebuiltState(db: DatabaseSync): void {
     repeat_reminder_count: 1,
   });
   assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM subscription_derived_backfills
-    WHERE name = 'subscription-derived-state-v3'`).get()?.["count"], 1);
+    WHERE name = 'subscription-derived-state-v4'`).get()?.["count"], 1);
   assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
 }
 
@@ -371,13 +378,38 @@ function assertSettingsMigrated(db: DatabaseSync, localePreference: string): voi
   });
 }
 
+function assertCurrentLocaleContract(db: DatabaseSync): void {
+  const expected = exclusiveMigrationTriggerDefinitions(exclusiveMigrationNames());
+  const triggers = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
+    .all() as Array<{ name: string; sql: string }>;
+  assertD1TriggerDefinitions(expected, triggers.filter((trigger) => expected.has(trigger.name)));
+  assert.equal(db.prepare(settingsLocaleInvariantQuery).get()?.["count"], 0);
+  const original = db.prepare("SELECT settings_json FROM settings WHERE user_id = ?").get(userId)?.["settings_json"];
+  if (original === undefined) return;
+  // 使用固定历史库的真实账号试写新语言；回滚试写，后续幂等与事实核对仍基于原数据。
+  db.exec("BEGIN");
+  try {
+    const update = db.prepare("UPDATE settings SET settings_json = json_set(settings_json, '$.localePreference', ?) WHERE user_id = ?");
+    for (const locale of LOCALE_PREFERENCES) {
+      update.run(locale, userId);
+      assert.equal(db.prepare(settingsLocaleInvariantQuery).get()?.["count"], 0);
+    }
+    assert.throws(() => update.run("fr-FR", userId), /SETTINGS_LOCALE_CONTRACT_INVALID/);
+    assert.throws(() => db.prepare("UPDATE settings SET settings_json = ? WHERE user_id = ?")
+      .run('{"locale":"ru-RU"}', userId), /SETTINGS_LOCALE_CONTRACT_INVALID/);
+  } finally {
+    db.exec("ROLLBACK");
+  }
+  assert.equal(db.prepare("SELECT settings_json FROM settings WHERE user_id = ?").get(userId)?.["settings_json"], original);
+}
+
 function assertUpgradeMarkersComplete(db: DatabaseSync): void {
   assert.deepEqual(
     db.prepare("SELECT name FROM d1_migrations ORDER BY name").all().map((row) => String(row["name"])),
     migrationNames(),
   );
   assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM subscription_derived_backfills
-    WHERE name = 'subscription-derived-state-v3'`).get()?.["count"], 1);
+    WHERE name = 'subscription-derived-state-v4'`).get()?.["count"], 1);
   assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
 }
 
@@ -417,6 +449,7 @@ test("a fresh database applies every current migration and converges on empty in
     assert.equal(client.db.prepare("SELECT COUNT(*) AS count FROM subscription_list_index").get()?.["count"], 0);
     assert.equal(client.db.prepare("SELECT COUNT(*) AS count FROM subscription_user_stats").get()?.["count"], 0);
     assert.deepEqual(client.db.prepare("PRAGMA foreign_key_check").all(), []);
+    assertCurrentLocaleContract(client.db);
   } finally {
     client.db.close();
   }
@@ -434,6 +467,9 @@ for (const fixture of pinnedFixtures) {
         : { action: "skipped", feeds: 0 };
       assert.deepEqual(await prepareCalendarFeedsFor0035(client), expectedFeedAction);
       assert.ok(applyPendingMigrations(client.db) > 0);
+      const balanceRows = client.db.prepare("SELECT balance, balance_currency FROM subscriptions").all();
+      assert.ok(balanceRows.length > 0);
+      assert.ok(balanceRows.every((row) => row["balance"] === null && row["balance_currency"] === null));
       assert.deepEqual(
         await restoreCalendarFeedsAfter0035(client),
         fixture.expectsFeedBackup ? { action: "restored", feeds: 2 } : { action: "skipped", feeds: 0 },
@@ -453,8 +489,38 @@ for (const fixture of pinnedFixtures) {
       assertRebuiltState(client.db);
       assertProductionPaymentTypeQueries(client.db);
       assertUpgradeMarkersComplete(client.db);
+      assertCurrentLocaleContract(client.db);
     } finally {
       client.db.close();
     }
   });
 }
+
+
+test("0047 adds nullable balance without touching facts, rolls back failure, and retries through the ledger", () => {
+  const client = openFixture("v0.3.21.sql");
+  const name = "0047_subscription_balance.sql";
+  try {
+    const applied = new Set(client.db.prepare("SELECT name FROM d1_migrations").all().map((row) => String(row["name"])));
+    for (const migration of migrationNames()) {
+      if (migration === name) break;
+      if (!applied.has(migration)) applyMigration(client.db, migration);
+    }
+    const facts = historicalFactRows(client.db);
+    // 模拟第二次 ALTER 遇到非预期 schema；第一次 ALTER 和账本必须一同回滚。
+    client.db.exec("ALTER TABLE subscriptions ADD COLUMN balance_currency TEXT");
+    assert.throws(() => applyMigration(client.db, name));
+    assert.equal(client.db.prepare("SELECT name FROM d1_migrations WHERE name = ?").get(name), undefined);
+    assert.ok(!client.db.prepare("PRAGMA table_info(subscriptions)").all().some((row) => row["name"] === "balance"));
+    client.db.exec("ALTER TABLE subscriptions DROP COLUMN balance_currency");
+    assert.equal(applyPendingMigrations(client.db), 1);
+    assert.equal(applyPendingMigrations(client.db), 0);
+    assert.deepEqual(historicalFactRows(client.db), facts);
+    assert.ok(client.db.prepare("SELECT balance, balance_currency FROM subscriptions").all().every((row) => row["balance"] === null && row["balance_currency"] === null));
+    assert.throws(() => client.db.prepare("UPDATE subscriptions SET balance = '0' WHERE id = ?").run(subscriptionId));
+    client.db.prepare("UPDATE subscriptions SET balance = '0', balance_currency = 'EUR' WHERE id = ?").run(subscriptionId);
+    assert.equal(applyPendingMigrations(client.db), 0);
+    assert.equal(client.db.prepare("SELECT balance FROM subscriptions WHERE id = ?").get(subscriptionId)?.["balance"], "0");
+    assert.deepEqual(client.db.prepare("PRAGMA foreign_key_check").all(), []);
+  } finally { client.db.close(); }
+});

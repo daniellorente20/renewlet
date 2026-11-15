@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { gotoSettingsSectionAfterHydration } from "../support/settings";
+import { expectAllAdvancedSettingsSectionsReady, gotoSettingsAfterHydration, gotoSettingsSectionAfterHydration } from "../support/settings";
 import {
   attachNetworkSummary,
   createNetworkMonitor,
@@ -87,6 +87,12 @@ test("protected desktop pages render without API or session bursts", async ({ pa
   } finally {
     await attachNetworkSummary(testInfo, monitor);
   }
+});
+
+test("cloudflare settings advanced chunks mount without viewport trigger", async ({ page }) => {
+  await gotoSettingsAfterHydration(page);
+  await expectAllAdvancedSettingsSectionsReady(page);
+  await expect(page.locator("#root")).toHaveJSProperty("scrollTop", 0);
 });
 
 test("settings notification history filter does not disturb next-check summary", async ({ page }, testInfo) => {

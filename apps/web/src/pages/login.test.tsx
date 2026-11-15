@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   cancelPasskeyCeremony: vi.fn(),
   reportClientError: vi.fn(),
   usePasswordResetAvailability: vi.fn(),
-  useSetupStatus: vi.fn(),
+  useAppStatus: vi.fn(),
   setTheme: vi.fn(),
   resolvedTheme: "dark" as const,
 }));
@@ -36,8 +36,8 @@ vi.mock("@/lib/report-client-error", () => ({
   reportClientError: mocks.reportClientError,
 }));
 
-vi.mock("@/hooks/use-setup-status", () => ({
-  useSetupStatus: mocks.useSetupStatus,
+vi.mock("@/hooks/use-app-status", () => ({
+  useAppStatus: mocks.useAppStatus,
 }));
 
 vi.mock("@/lib/theme-provider", () => ({
@@ -124,12 +124,19 @@ describe("Login page", () => {
     mocks.resolvedTheme = "dark";
     localStorage.clear();
     mocks.usePasswordResetAvailability.mockReturnValue(false);
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: false,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: false, siteKey: "" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: false,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: false, siteKey: "" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
   });
 
@@ -141,18 +148,44 @@ describe("Login page", () => {
   });
 
   it("shows the setup prompt only when setup is required and enabled", () => {
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: true,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: false, siteKey: "" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: true,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: false, siteKey: "" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
 
     renderLogin();
 
     expect(screen.getByText("First deployment? Go to")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "initialize admin" })).toHaveAttribute("href", "/setup");
+  });
+
+  it("fails closed for password login while keeping Passkey available", () => {
+    mocks.useAppStatus.mockReturnValue({
+      status: "error",
+      data: null,
+      error: new Error("status unavailable"),
+      isLoading: false,
+      isRefreshing: false,
+      isReady: false,
+      retry: vi.fn(),
+    });
+
+    renderLogin();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Login service is temporarily unavailable");
+    expect(screen.getByRole("button", { name: "Log in" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sign in with passkey" })).toBeEnabled();
+    expect(screen.queryByRole("link", { name: "initialize admin" })).not.toBeInTheDocument();
   });
 
   it("uses login autofill metadata for email and password fields", () => {
