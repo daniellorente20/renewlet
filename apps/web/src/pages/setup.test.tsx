@@ -1,5 +1,6 @@
 // Setup 页面测试保护首次管理员创建 UX；是否允许初始化仍由后端 setup route 最终裁决。
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
@@ -7,34 +8,48 @@ import SetupPage from "./setup";
 
 const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn(),
-  useSetupStatus: vi.fn(),
+  useAppStatus: vi.fn(),
 }));
 
-vi.mock("@/hooks/use-setup-status", () => ({
-  useSetupStatus: mocks.useSetupStatus,
+vi.mock("@/hooks/use-app-status", () => ({
+  useAppStatus: mocks.useAppStatus,
 }));
 
-vi.mock("@/lib/api-client", () => ({
-  apiFetch: mocks.apiFetch,
-}));
+vi.mock("@/lib/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api-client")>();
+  return {
+    ...actual,
+    apiFetch: mocks.apiFetch,
+  };
+});
 
 function renderSetup() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter>
-      <SetupPage />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <SetupPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
 describe("Setup page", () => {
   beforeEach(() => {
     mocks.apiFetch.mockReset();
-    mocks.useSetupStatus.mockReturnValue({
-      setupRequired: true,
-      setupEnabled: true,
-      demoMode: false,
-      turnstile: { enabled: false, siteKey: "" },
+    mocks.useAppStatus.mockReturnValue({
+      status: "ready",
+      data: {
+        setupRequired: true,
+        setupEnabled: true,
+        demoMode: false,
+        turnstile: { enabled: false, siteKey: "" },
+      },
+      error: null,
       isLoading: false,
+      isRefreshing: false,
+      isReady: true,
+      retry: vi.fn(),
     });
   });
 
@@ -96,5 +111,42 @@ describe("Setup page", () => {
       method: "POST",
       body: JSON.stringify({ name: "Root Admin", email: "admin@example.com", password: "password123" }),
     });
+  });
+
+  it("never shows the completed page when app status is unavailable", async () => {
+    const retry = vi.fn();
+    mocks.useAppStatus.mockReturnValue({
+      status: "error",
+      data: null,
+      error: new Error("503"),
+      isLoading: false,
+      isRefreshing: false,
+      isReady: false,
+      retry,
+    });
+
+    renderSetup();
+
+    expect(screen.queryByText("初始化已完成")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("初始化失败");
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the submit action disabled while status is loading", () => {
+    mocks.useAppStatus.mockReturnValue({
+      status: "loading",
+      data: null,
+      error: null,
+      isLoading: true,
+      isRefreshing: false,
+      isReady: false,
+      retry: vi.fn(),
+    });
+
+    renderSetup();
+
+    expect(screen.getByRole("button", { name: "创建管理员" })).toBeDisabled();
+    expect(screen.queryByText("初始化已完成")).not.toBeInTheDocument();
   });
 });

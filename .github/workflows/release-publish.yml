@@ -100,8 +100,20 @@ jobs:
         run: pnpm typecheck:e2e
 
       - name: Run release smoke
+        id: playwright
         # Tag 发布前先挡 setup/login、ZIP 恢复、AI mock 导入和账号安全改密；失败时不推镜像、不生成 Release。
         run: pnpm exec playwright test e2e/release-smoke.spec.ts e2e/mobile-release-smoke.spec.ts
+
+      - name: Capture E2E port diagnostics
+        if: ${{ failure() && steps.playwright.outcome == 'failure' }}
+        # 启动失败可能没有浏览器 trace；保留 LISTEN/TIME_WAIT 等状态，不杀进程或复用未知服务。
+        run: |
+          mkdir -p test-results
+          {
+            cat /proc/sys/net/ipv4/ip_local_port_range
+            ss --tcp --all --numeric --processes '( sport = :19090 or sport = :15173 )'
+          } > test-results/e2e-ports.txt
+          cat test-results/e2e-ports.txt
 
       - name: Upload Playwright artifacts
         if: failure()
@@ -254,7 +266,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build release body
-        # Release 正文优先来自 docs/release-notes/vX.Y.Z-zh.md，并在顶部放英文版入口；不要把全量 git log 刷进发布页。
+        # Release 正文必须来自英文说明；中文版入口固定到当前 tag，RC 同样可用，不依赖 main 的更新进度。
         run: node scripts/release.mjs release-body --version "${{ needs.metadata.outputs.version }}" > tmp-release-body.md
 
       - name: Build Docker deployment asset

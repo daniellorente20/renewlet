@@ -23,6 +23,7 @@ import {
   getEffectiveSubscriptionStatus,
   isEffectivelyInactiveSubscription,
 } from "./subscription-status";
+import { resolveUpcomingSubscriptionEvent } from "./upcoming-reminders";
 
 export interface SubscriptionFilterState {
   searchQuery: string;
@@ -229,16 +230,8 @@ function nextAttentionDate(
   today: DateOnly | string,
   inactive: boolean,
 ): DateOnly | string | null {
-  if (isOneTimeBuyout(subscription)) return null;
-  if (inactive) return subscription.nextBillingDate;
-  if (subscription.status !== "trial") return subscription.nextBillingDate;
-
-  const candidates = [subscription.trialEndDate, subscription.nextBillingDate]
-    .filter((date): date is DateOnly => date !== undefined && compareDateOnly(date, today) >= 0);
-  return candidates.reduce<DateOnly | string | null>(
-    (earliest, date) => earliest === null || compareDateOnly(date, earliest) < 0 ? date : earliest,
-    null,
-  );
+  if (inactive) return isOneTimeBuyout(subscription) ? null : subscription.nextBillingDate;
+  return resolveUpcomingSubscriptionEvent(subscription, today)?.dueDate ?? null;
 }
 
 function compareNullableDateOnly(

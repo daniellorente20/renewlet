@@ -84,17 +84,25 @@ const LAST_SEEN_TOUCH_INTERVAL_MS = 15 * 60 * 1000;
  * Cloudflare v1 不支持 Docker Demo Mode，但仍必须返回同一契约，避免前端 capability 判断按运行面分叉。
  */
 async function buildAppStatus(env: Env) {
+  const [hasAdmin, turnstile] = await Promise.all([
+    hasEnabledAdmin(env),
+    publicTurnstileConfig(env),
+  ]);
   return appStatusPayloadSchema.parse({
-    setupRequired: !(await hasEnabledAdmin(env)),
+    setupRequired: !hasAdmin,
     setupEnabled: setupEnabled(env),
     demoMode: false,
     // status 只公开完整可用的 siteKey；Turnstile secret 和 secretConfigured 只存在管理员访问安全接口。
-    turnstile: await publicTurnstileConfig(env),
+    turnstile,
   });
 }
 
-export async function appStatus(_request: Request, env: Env): Promise<Response> {
-  return successJson(await buildAppStatus(env));
+export async function appStatus(request: Request, env: Env): Promise<Response> {
+  try {
+    return successJson(await buildAppStatus(env));
+  } catch (error: unknown) {
+    throw appStatusUnavailable(request, error);
+  }
 }
 
 /**
@@ -102,12 +110,22 @@ export async function appStatus(_request: Request, env: Env): Promise<Response> 
  *
  * 新前端读取 appStatus；保留两字段响应，避免外部探针因 demoMode 额外字段解析失败。
  */
-export async function setupStatus(_request: Request, env: Env): Promise<Response> {
-  const status = await buildAppStatus(env);
-  return successJson(setupStatusPayloadSchema.parse({
-    setupRequired: status.setupRequired,
-    setupEnabled: status.setupEnabled,
-  }));
+export async function setupStatus(request: Request, env: Env): Promise<Response> {
+  try {
+    const status = await buildAppStatus(env);
+    return successJson(setupStatusPayloadSchema.parse({
+      setupRequired: status.setupRequired,
+      setupEnabled: status.setupEnabled,
+    }));
+  } catch (error: unknown) {
+    throw appStatusUnavailable(request, error);
+  }
+}
+
+function appStatusUnavailable(request: Request, error: unknown): HttpError {
+  const requestId = crypto.randomUUID();
+  console.error("app_status_unavailable", { requestId, error });
+  return new HttpError(503, serverText(requestLocale(request), "common.internalError"), "APP_STATUS_UNAVAILABLE", { requestId });
 }
 
 /**

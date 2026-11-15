@@ -123,6 +123,36 @@ func TestAuthLoginRequiresTurnstileBeforePasswordFlow(t *testing.T) {
 	}
 }
 
+func TestAuthLoginUsesBrowserSameOriginThroughFNOSProxyAndBlocksCrossSite(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	user, _ := createRouteTestUser(t, app, "fnos-origin")
+
+	forwardedHeaders := map[string]string{
+		"X-Forwarded-Proto": "https",
+		"X-Forwarded-Host":  "watchcow-renewlet-web-1.example.fnos.net",
+		"Sec-Fetch-Site":    "same-origin",
+		"Origin":            "https://office.app.5ddd.com:41381",
+	}
+	success := serveTestRequestWithHeaders(t, app, http.MethodPost, "/api/app/auth/login", loginJSON(user.Email()), "", forwardedHeaders)
+	if success.Code != http.StatusOK {
+		t.Fatalf("expected login through external fnOS origin to succeed, got %d: %s", success.Code, success.Body.String())
+	}
+
+	blockedHeaders := map[string]string{
+		"X-Forwarded-Proto": "https",
+		"X-Forwarded-Host":  "watchcow-renewlet-web-1.example.fnos.net",
+		"Sec-Fetch-Site":    "cross-site",
+		"Origin":            "https://office.app.5ddd.com:41381",
+	}
+	blocked := serveTestRequestWithHeaders(t, app, http.MethodPost, "/api/app/auth/login", loginJSON(user.Email()), "", blockedHeaders)
+	if blocked.Code != http.StatusForbidden {
+		t.Fatalf("expected cross-origin login to remain forbidden, got %d: %s", blocked.Code, blocked.Body.String())
+	}
+}
+
 func TestAuthSecurityTurnstileTestRouteVerifiesDraftAndStoredSecret(t *testing.T) {
 	app := newSchemaTestApp(t)
 	if err := ensureSchema(app); err != nil {

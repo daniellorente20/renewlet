@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router";
 import { assertDateOnly } from "@/lib/time/date-only";
 import {
   subscriptionCycleFixture,
@@ -58,6 +59,11 @@ vi.mock("@/hooks/use-subscriptions", () => ({
   useSubscriptionIndex: mocks.useSubscriptionIndex,
   useSubscriptionFacets: mocks.useSubscriptionFacets,
   useSubscriptionDetail: () => ({ data: undefined, error: null, isPending: false }),
+}));
+
+// 复制操作不依赖公开页管理状态；明确固定该边界，避免页面挂载时隐式发送请求。
+vi.mock("@/hooks/use-public-status-page", () => ({
+  usePublicStatusPageStatus: () => ({ data: { enabled: false }, isSuccess: true }),
 }));
 
 vi.mock("@/hooks/use-settings", () => ({
@@ -284,7 +290,9 @@ function renderSubscriptionsPage() {
   return render(
     <div id="root">
       <QueryClientProvider client={queryClient}>
-        <Subscriptions />
+        <MemoryRouter>
+          <Subscriptions />
+        </MemoryRouter>
       </QueryClientProvider>
     </div>,
   );

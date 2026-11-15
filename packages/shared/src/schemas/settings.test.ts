@@ -39,6 +39,13 @@ describe("settings schema", () => {
     expect(settingsUpdateBodySchema.safeParse({ subscriptionPriceReferenceEnabled: "true" }).success).toBe(false);
   });
 
+  it("defaults the Chinese lunar calendar helper to off and validates boolean patches", () => {
+    expect(createDefaultAppSettings().showLunarCalendar).toBe(false);
+    expect(settingsUpdateBodySchema.parse({ showLunarCalendar: true }).showLunarCalendar).toBe(true);
+    expect(settingsUpdateBodySchema.safeParse({ showLunarCalendar: "true" }).success).toBe(false);
+    expect(persistedSettingsBackupSchema.parse({ localePreference: "auto" }).showLunarCalendar).toBeUndefined();
+  });
+
   it("accepts online App icon source settings with App Store enabled by default", () => {
     const defaults = createDefaultAppSettings();
     expect(defaults.onlineIconSources.appStore.enabled).toBe(true);
@@ -114,6 +121,31 @@ describe("settings schema", () => {
       defaultCurrency: "USD",
       builtInIconSources: { thesvg: { enabled: false } },
       onlineIconSources: { appStore: { storefronts: ["cn"] } },
+    });
+  });
+
+  it("accepts legacy AI settings in backups and returns canonical transport", () => {
+    const parsed = persistedSettingsBackupSchema.parse({
+      localePreference: "auto",
+      aiRecognition: {
+        provider: "openai",
+        transportProtocol: "openai-chat",
+        model: "gpt-6.1-sol",
+        modelInputMode: "manual",
+        baseUrl: "https://gateway.example.com/v1",
+        apiKey: "sk-legacy",
+        defaultThinkingControl: { provider: "openai", effort: "minimal" },
+      },
+    });
+
+    expect(parsed.aiRecognition).toEqual({
+      providerType: "openai",
+      transportProtocol: "openai-responses",
+      model: "gpt-6.1-sol",
+      modelInputMode: "manual",
+      baseUrl: "https://gateway.example.com/v1",
+      apiKey: "sk-legacy",
+      defaultThinkingControl: null,
     });
   });
 

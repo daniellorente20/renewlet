@@ -34,6 +34,8 @@ const subscriptionColumns0035 = [
 const subscriptionColumnsAppendedAfter0035 = [
   // 0041
   "previous_price", "previous_price_currency", "previous_price_changed_at",
+  // 0047
+  "balance", "balance_currency",
 ] as const;
 const pre0035AllowedExtraColumns = new Set([
   ...subscriptionColumns0035,

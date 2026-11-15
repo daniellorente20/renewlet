@@ -2,10 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "renewlet",
   "main": "apps/worker/src/index.ts",
+  "upload_source_maps": true,
   "compatibility_date": "2026-06-24",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "compatibility_flags": ["nodejs_compat"],
+  "alias": {
+    "@aws-sdk/xml-builder": "@aws-sdk/xml-builder/dist-cjs/index.js"
+  },
   "observability": {
     "enabled": true,
     "logs": {

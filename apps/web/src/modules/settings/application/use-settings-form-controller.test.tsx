@@ -1,6 +1,6 @@
 // Settings controller 测试保护远端设置、本地草稿、主题/i18n 预览和保存副作用的唯一应用层写入口。
 import { act, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_CUSTOM_CONFIG } from "@/types/config";
 import {
   APPEARANCE_PENDING_STORAGE_KEY,
@@ -108,7 +108,7 @@ describe("useSettingsFormController", () => {
   });
 
   it("does not prefill or mutate external integration settings in demo mode", async () => {
-    mocks.appStatus = { setupRequired: false, setupEnabled: false, demoMode: true, turnstile: { enabled: false, siteKey: "" }, isLoading: false };
+    mocks.appStatus = { status: "ready", data: { setupRequired: false, setupEnabled: false, demoMode: true, turnstile: { enabled: false, siteKey: "" } }, error: null, isLoading: false, isRefreshing: false, isReady: true, retry: vi.fn() };
     mocks.remoteSettings = {
       ...BASE_SETTINGS,
       enabledChannels: [],
@@ -140,6 +140,32 @@ describe("useSettingsFormController", () => {
     expect(result.current.settings.enabledChannels).toEqual([]);
     expect(mocks.testConnection).not.toHaveBeenCalled();
     expect(result.current.hasUnsavedChanges).toBe(false);
+  });
+
+  it("fails closed without clearing settings when app status is unavailable", async () => {
+    mocks.appStatus = {
+      status: "error",
+      data: null,
+      error: new Error("status unavailable"),
+      isLoading: false,
+      isRefreshing: false,
+      isReady: false,
+      retry: vi.fn(),
+    };
+    mocks.remoteSettings = {
+      ...BASE_SETTINGS,
+      recipientEmail: "saved@example.com",
+    };
+
+    const { result } = renderSettingsFormController();
+
+    await waitFor(() => {
+      expect(result.current.externalIntegrationsDisabled).toBe(true);
+      expect(result.current.sensitiveAccountActionsDisabled).toBe(true);
+      expect(result.current.appStatusHasError).toBe(true);
+      expect(result.current.appStatusHasData).toBe(false);
+    });
+    expect(result.current.settings.recipientEmail).toBe("saved@example.com");
   });
 
   it("marks the form dirty when the prefilled recipient email is changed", async () => {

@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "../support/layout";
-import { gotoSettingsSectionAfterHydration } from "../support/settings";
+import { expectAllAdvancedSettingsSectionsReady, gotoSettingsAfterHydration, gotoSettingsSectionAfterHydration } from "../support/settings";
 import {
   attachNetworkSummary,
   createNetworkMonitor,
@@ -67,6 +67,12 @@ test("mobile core pages have no horizontal overflow", async ({ page }, testInfo)
   }
 });
 
+test("cloudflare mobile settings advanced chunks mount without viewport trigger", async ({ page }) => {
+  await gotoSettingsAfterHydration(page);
+  await expectAllAdvancedSettingsSectionsReady(page);
+  await expect(page.locator("#root")).toHaveJSProperty("scrollTop", 0);
+});
+
 test("mobile sheets, dialogs, and notification history stay usable", async ({ page }, testInfo) => {
   const monitor = createNetworkMonitor(page);
   try {
@@ -89,6 +95,11 @@ test("mobile sheets, dialogs, and notification history stay usable", async ({ pa
       .click();
     await expect(currencyDialog).toBeHidden();
 
+    // 高级设置已在首屏提交后后台挂载；这里仍通过目录进入通知区块，保护移动端抽屉关闭、hash 和通知历史浮层交互。
+    await page.getByRole("button", { name: "打开设置目录" }).click();
+    const settingsDrawer = page.getByTestId("settings-section-nav-drawer");
+    await settingsDrawer.getByRole("link", { name: "通知" }).click();
+    await expect(page).toHaveURL(/#settings-notifications$/);
     await page.getByRole("button", { name: "查看调度与历史" }).click();
     const historyDialog = page.getByRole("dialog", { name: "通知调度与发送历史" });
     await expect(historyDialog).toBeVisible();

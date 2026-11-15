@@ -16,6 +16,7 @@ import {
 } from "@/lib/theme-storage";
 import { useSettingsFormController } from "./use-settings-form-controller";
 import type { SettingsNotificationHistoryController } from "./use-notification-history";
+import type { AppStatusState } from "@/hooks/use-app-status";
 
 export const BASE_SETTINGS: AppSettings = {
   ...DEFAULT_SETTINGS,
@@ -67,7 +68,7 @@ const mocks = vi.hoisted(() => ({
   syncRemoteLocalePreference: vi.fn(),
   testConnection: vi.fn(),
   refetchNotificationHistory: vi.fn<() => Promise<void>>(),
-  publicStatusPageStatus: { data: { enabled: false, pageUrl: undefined as string | undefined, showPrices: false }, isLoading: false },
+  publicStatusPageStatus: { data: { enabled: false, pageUrl: undefined as string | undefined, showPrices: false, hideExpired: false, hideLifetime: false }, isLoading: false },
   createPublicStatusPageMutateAsync: vi.fn(),
   updatePublicStatusPageMutateAsync: vi.fn(),
   deletePublicStatusPageMutateAsync: vi.fn(),
@@ -98,7 +99,7 @@ const mocks = vi.hoisted(() => ({
   openWindow: vi.fn(),
   isCloudflareRuntime: false,
   accountIdentity: { email: "alice@example.com" as string | null, role: "admin", banned: false },
-  appStatus: { setupRequired: false, setupEnabled: true, demoMode: false, turnstile: { enabled: false, siteKey: "" }, isLoading: false },
+  appStatus: { status: "ready", data: { setupRequired: false, setupEnabled: true, demoMode: false, turnstile: { enabled: false, siteKey: "" } }, error: null, isLoading: false, isRefreshing: false, isReady: true, retry: vi.fn() } as AppStatusState,
 }));
 
 function settingsMutationResult(command: SettingsMutationCommand) {
@@ -124,8 +125,8 @@ vi.mock("@/hooks/use-settings", () => ({
   }),
 }));
 
-vi.mock("@/hooks/use-setup-status", () => ({
-  useSetupStatus: () => mocks.appStatus,
+vi.mock("@/hooks/use-app-status", () => ({
+  useAppStatus: () => mocks.appStatus,
 }));
 
 vi.mock("@/hooks/use-auth-security", () => ({
@@ -158,7 +159,7 @@ vi.mock("@/hooks/use-report-exchange-rates", () => ({
 
 vi.mock("@/hooks/use-subscriptions", () => ({
   useSubscriptionFacets: () => ({
-    data: { total: 0, categoryCounts: {}, tags: [], visibleCount: 0, hiddenCount: 0 },
+    data: { total: 0, categoryCounts: {}, tags: [], visibleCount: 0, hiddenCount: 0, expiredCount: 0, lifetimeCount: 0 },
     isPending: false,
     status: "success",
   }),
@@ -400,7 +401,7 @@ export function setupSettingsFormControllerTestEnvironment() {
     localStorage.removeItem(APPEARANCE_PENDING_STORAGE_KEY);
     localStorage.removeItem(SETTINGS_APPEARANCE_PENDING_STORAGE_KEY);
     localStorage.removeItem(SETTINGS_THEME_MODE_STORAGE_KEY);
-    mocks.publicStatusPageStatus = { data: { enabled: false, pageUrl: undefined, showPrices: false }, isLoading: false };
+    mocks.publicStatusPageStatus = { data: { enabled: false, pageUrl: undefined, showPrices: false, hideExpired: false, hideLifetime: false }, isLoading: false };
     mocks.publicApiTokens = { data: [], isLoading: false };
     mocks.telegramBotCommands = { data: undefined, isLoading: false, refetch: vi.fn().mockResolvedValue(undefined) };
     mocks.builtInIconIndexStatus = {
@@ -422,7 +423,7 @@ export function setupSettingsFormControllerTestEnvironment() {
     mocks.customConfig = DEFAULT_CUSTOM_CONFIG;
     mocks.isCloudflareRuntime = false;
     mocks.accountIdentity = { email: "alice@example.com", role: "admin", banned: false };
-    mocks.appStatus = { setupRequired: false, setupEnabled: true, demoMode: false, turnstile: { enabled: false, siteKey: "" }, isLoading: false };
+    mocks.appStatus = { status: "ready", data: { setupRequired: false, setupEnabled: true, demoMode: false, turnstile: { enabled: false, siteKey: "" } }, error: null, isLoading: false, isRefreshing: false, isReady: true, retry: vi.fn() };
     mocks.authSecuritySettings = { data: { turnstile: { enabled: false, siteKey: "", secretConfigured: false } }, isLoading: false };
     mocks.updateSettingsMutateAsync.mockImplementation(async (command: SettingsMutationCommand) => settingsMutationResult(command));
     mocks.updateAuthSecurityMutateAsync.mockImplementation(async (body: { turnstile: { enabled: boolean; siteKey: string; secret?: string } }) => ({
@@ -441,14 +442,14 @@ export function setupSettingsFormControllerTestEnvironment() {
       createdAt: "2026-06-07T00:00:00Z",
       updatedAt: "2026-06-07T00:00:00Z",
       pageUrl: "https://example.com/status/secret",
-      showPrices: false,
+      showPrices: false, hideExpired: false, hideLifetime: false,
     });
     mocks.updatePublicStatusPageMutateAsync.mockResolvedValue({
       enabled: true,
       createdAt: "2026-06-07T00:00:00Z",
       updatedAt: "2026-06-07T00:00:00Z",
       pageUrl: "https://example.com/status/secret",
-      showPrices: true,
+      showPrices: true, hideExpired: false, hideLifetime: false,
     });
     mocks.deletePublicStatusPageMutateAsync.mockResolvedValue({});
     mocks.createPublicApiTokenMutateAsync.mockResolvedValue({
@@ -520,3 +521,7 @@ export function setupSettingsFormControllerTestEnvironment() {
     vi.unstubAllGlobals();
   });
 }
+
+vi.mock("@/hooks/use-bulk-public-visibility", () => ({
+  useBulkPublicVisibility: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));

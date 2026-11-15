@@ -1,3 +1,4 @@
+import { bulkUpdatePublicVisibility } from "./subscription-public-visibility";
 import { healthPayloadSchema } from "@renewlet/shared/schemas/app";
 import { Hono, type Context } from "hono";
 import {
@@ -61,7 +62,6 @@ import {
   downloadCloudBackup,
   listCloudBackups,
   readCloudBackupConfig,
-  runDueCloudBackups,
   testCloudBackupConfig,
   updateCloudBackupConfig,
 } from "./cloud-backup";
@@ -74,8 +74,8 @@ import {
 } from "./media-icon-index";
 import { consumeBuiltInIconIndexRefreshQueue } from "./media-icon-index-refresh-queue";
 import { mediaCandidates } from "./search";
-import { notificationHistory, notificationOverview, notificationRun, notificationTest, runScheduledNotifications } from "./notifications";
-import { renewAutoSubscriptionsForAllUsers } from "./subscription-renewal";
+import { notificationHistory, notificationOverview, notificationRun, notificationTest } from "./notifications";
+import { runCronTick } from "./cron";
 import {
   createPublicStatusPage,
   deletePublicStatusPage,
@@ -101,7 +101,7 @@ import {
   telegramWebhook,
 } from "./telegram-bot";
 import { systemRestart, systemUpdate, systemUpdateStatus, systemVersion } from "./system";
-import { errorResponse, methodNotAllowed, requestLocale, requireSameOriginUnsafe, successJson, toResponse, type AppLocale } from "./http";
+import { errorResponse, HttpError, methodNotAllowed, requestLocale, requireSameOriginUnsafe, successJson, toResponse, type AppLocale } from "./http";
 import { serverText } from "./server-i18n";
 import type { Env } from "./types";
 
@@ -157,7 +157,7 @@ defineRoute(app, "/api/app/health", {
 });
 
 defineRoute(app, "/api/app/ready", {
-  GET: (context) => ready(context.env),
+  GET: (context) => ready(context.env, context.get("locale")),
 });
 
 defineRoute(app, "/api/app/status", {
@@ -261,6 +261,7 @@ defineRoute(subscriptionRoutes, "/", {
   GET: (context) => readSubscriptions(context.req.raw, context.env),
   POST: (context) => createSubscription(context.req.raw, context.env),
 });
+defineRoute(subscriptionRoutes, "/bulk-public-visibility", { POST: (context) => bulkUpdatePublicVisibility(context.req.raw, context.env) });
 // 集合静态路由先于 /:id 注册，避免 Hono 把 index/analytics/calendar-feeds/facets/export 当作订阅 ID。
 defineRoute(subscriptionRoutes, "/index", { GET: (context) => readSubscriptionIndex(context.req.raw, context.env) });
 defineRoute(subscriptionRoutes, "/analytics", { GET: (context) => readSubscriptionAnalytics(context.req.raw, context.env) });
@@ -409,58 +410,18 @@ function normalizeRuntimeRoutePath(path: string): string {
   return normalized === "/" ? normalized : normalized.replace(/\/$/, "");
 }
 
-async function runScheduledTasks(env: Env): Promise<void> {
-  // Cron 阶段必须串行：自动续订先修正日期，通知再取内容，云备份最后跑慢远端存储。
-  await runScheduledPhase("auto_renew_subscriptions", () => renewAutoSubscriptionsForAllUsers(env));
-  await runScheduledPhase("notifications", () => runScheduledNotifications(env));
-  await runScheduledPhase("cloud_backups", () => runDueCloudBackups(env));
-}
-
-async function runScheduledPhase(phase: string, task: () => Promise<unknown>): Promise<void> {
-  try {
-    await task();
-  } catch (error) {
-    // 顶层隔离只记录阶段摘要并继续后续任务；Cron 里 provider/raw 错误不得把 secret 带进平台日志。
-    console.error("scheduled_phase_failed", {
-      event: "scheduled_phase_failed",
-      phase,
-      error: safeScheduledPhaseError(error),
-    });
-  }
-}
-
-function safeScheduledPhaseError(error: unknown): { name: string; message: string } {
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    name: error instanceof Error ? error.name || "Error" : typeof error,
-    message: redactScheduledPhaseError(message).slice(0, 300),
-  };
-}
-
-function redactScheduledPhaseError(message: string): string {
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
-    .replace(/sctp\d+t[A-Za-z0-9_-]+/gi, "[redacted]")
-    .replace(/SCT[A-Za-z0-9_-]+/g, "[redacted]")
-    .replace(/((?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|token|sendkey)\s*[:=]\s*)[^,\s;]+/gi, "$1[redacted]")
-    .replace(/([?&](?:X-Amz-Signature|X-Amz-Credential|X-Amz-Security-Token|AWSAccessKeyId|Signature|Expires|access_key|accessKey|api_key|apikey|token|sendkey|sendKey|key)=)[^&\s"'<>]+/gi, "$1[redacted]");
-}
-
 /** health 返回最小可缓存外的存活信息；不读取 D1/R2，避免健康检查放大平台短暂抖动。 */
 function health(): Response {
   return successJson(healthPayloadSchema.parse({ time: new Date().toISOString() }));
 }
 
 function maintenanceResponse(): Response {
-  return Response.json(
-    { error: { code: "MAINTENANCE_MODE", message: "Renewlet is temporarily unavailable during a database upgrade." } },
-    {
-      status: 503,
-      headers: {
-        "cache-control": "no-store",
-        "retry-after": "900",
-      },
-    },
+  return errorResponse(
+    503,
+    "Renewlet is temporarily unavailable during a database upgrade.",
+    "MAINTENANCE_MODE",
+    undefined,
+    { headers: { "retry-after": "900" } },
   );
 }
 
@@ -468,10 +429,31 @@ function maintenanceModeEnabled(env: Env): boolean {
   return env.RENEWLET_MAINTENANCE_MODE === "true";
 }
 
-async function ready(env: Env): Promise<Response> {
-  // ready 只验证 D1 binding 可用；R2/第三方 provider 不应拖慢平台健康检查。
-  await env.DB.prepare("SELECT 1").first();
-  return health();
+async function ready(env: Env, locale: AppLocale): Promise<Response> {
+  // ready 只验证 Worker 依赖的最小 D1 schema；R2/第三方 provider 不应拖慢部署验收。
+  try {
+    const tables = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'd1_migrations')",
+    ).all<{ name: string }>();
+    const tableNames = new Set(tables.results.map((row) => row.name));
+    if (!tableNames.has("users") || !tableNames.has("d1_migrations")) {
+      throw new Error("required D1 tables are missing");
+    }
+
+    const columns = await env.DB.prepare("PRAGMA table_info(users)").all<{ name: string }>();
+    const columnNames = new Set(columns.results.map((row) => row.name));
+    for (const requiredColumn of ["id", "role", "banned"]) {
+      if (!columnNames.has(requiredColumn)) throw new Error(`users.${requiredColumn} is missing`);
+    }
+
+    const migration = await env.DB.prepare("SELECT name FROM d1_migrations LIMIT 1").first<{ name: string }>();
+    if (!migration?.name) throw new Error("D1 migrations are not applied");
+    return health();
+  } catch (error: unknown) {
+    const requestId = crypto.randomUUID();
+    console.error("app_not_ready", { requestId, error });
+    throw new HttpError(503, serverText(locale, "common.internalError"), "APP_NOT_READY", { requestId });
+  }
 }
 
 const worker: ExportedHandler<Env> = {
@@ -485,7 +467,7 @@ const worker: ExportedHandler<Env> = {
   async scheduled(_controller, env) {
     // 排他迁移期间不再启动后台写入，部署编排器会等待旧 invocation 的 15 分钟平台上限后才写 D1。
     if (maintenanceModeEnabled(env)) return;
-    await runScheduledTasks(env);
+    await runCronTick(env);
   },
 
   async queue(batch, env) {

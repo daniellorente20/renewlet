@@ -10,6 +10,8 @@ function row(overrides: Partial<SubscriptionRow> = {}): SubscriptionRow {
     user_id: "usr_owner",
     name: "Adobe Creative Cloud",
     logo: null,
+    balance: null,
+    balance_currency: null,
     price: "239.88",
     currency: "EUR",
     billing_cycle: "annual",

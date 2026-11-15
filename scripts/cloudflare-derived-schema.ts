@@ -2,12 +2,13 @@ import { z } from "zod";
 import type { D1Client } from "./cloudflare-d1-client";
 import {
   classifyDerivedSchema,
+  SUBSCRIPTION_DERIVED_BACKFILL_NAME,
   type DerivedBackfillState,
   type DerivedSchemaShape,
 } from "./cloudflare-derived-backfill-state";
 
-// migration 记录只能证明文件曾被执行；部署放行还必须同时证明列定义、键、索引、约束和 v3 marker 互相一致。
-const backfillName = "subscription-derived-state-v3";
+// migration 记录只能证明文件曾被执行；部署放行还必须同时证明列定义、键、索引、约束和 v4 marker 互相一致。
+const backfillName = SUBSCRIPTION_DERIVED_BACKFILL_NAME;
 
 const migrationRowSchema = z.object({ name: z.string() }).passthrough();
 const markerRowSchema = z.object({ name: z.string() }).passthrough();
@@ -163,9 +164,12 @@ async function foreignKeySignatures(client: D1Client, table: string): Promise<st
   )).sort();
 }
 
-async function tableDefinitionsValid(client: D1Client): Promise<boolean> {
+async function tableDefinitionsValid(client: D1Client, balanceMigrationApplied: boolean): Promise<boolean> {
   const expected = {
-    subscriptions: subscriptionsColumns,
+    // 升级前后按账本选择精确列签名；不接受缺列、半个余额字段或未记账的手工 ALTER。
+    subscriptions: balanceMigrationApplied
+      ? [...subscriptionsColumns, column("balance"), column("balance_currency")]
+      : subscriptionsColumns,
     subscription_list_index: listIndexColumns,
     subscription_tags: tagColumns,
     subscription_user_stats: statsColumns,
@@ -238,13 +242,13 @@ async function foreignKeysValid(client: D1Client): Promise<boolean> {
 }
 
 /**
- * 从数据库持久事实分类升级状态；前端版本号、旧 v2 marker 或单独一条 migration 记录都不能授权跳过 v3。
+ * 从数据库持久事实分类升级状态；旧 v2/v3 marker 或单独一条 migration 记录都不能授权跳过 v4。
  * 返回 invalid-mixed 时调用方只能阻断部署，不能现场 ALTER 或猜测缺失结构。
  */
 export async function probeDerivedBackfillState(client: D1Client): Promise<DerivedBackfillState> {
   const migrationRows = await client.query(
-    "SELECT name FROM d1_migrations WHERE name IN (?, ?)",
-    ["0036_subscription_derived_state_v2.sql", "0039_rebuild_subscription_collection_projections.sql"],
+    "SELECT name FROM d1_migrations WHERE name IN (?, ?, ?)",
+    ["0036_subscription_derived_state_v2.sql", "0039_rebuild_subscription_collection_projections.sql", "0047_subscription_balance.sql"],
     migrationRowSchema.parse,
   );
   const listRows = await tableColumnRows(client, "subscription_list_index");
@@ -277,7 +281,7 @@ export async function probeDerivedBackfillState(client: D1Client): Promise<Deriv
     backfillColumns: backfillRows.map((row) => row.name),
     primaryKeysValid: await primaryKeysValid(client),
     foreignKeysValid: await foreignKeysValid(client),
-    constraintsValid: await tableDefinitionsValid(client)
+    constraintsValid: await tableDefinitionsValid(client, migrationRows.some((row) => row.name === "0047_subscription_balance.sql"))
       && await requiredIndexesValid(client)
       && await statsChecksValid(client),
     markerPresent: markerRows.length === 1,

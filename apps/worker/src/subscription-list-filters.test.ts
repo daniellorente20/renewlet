@@ -37,7 +37,8 @@ describe("subscription collection query plan", () => {
     expect(plan.sql).toContain("INNER JOIN json_each(?) AS selected");
     expect(plan.sql).toContain("json_extract(selected.value, '$.key')");
     expect(plan.sql).not.toContain("lower(CAST(selected.value AS TEXT))");
-    expect(plan.sql).toContain("idx.next_billing_date >= ?");
+    expect(plan.sql).toContain("idx.next_billing_date >= ? AND idx.next_billing_date <= ?");
+    expect(plan.sql).toContain("idx.status = 'trial' AND idx.trial_end_date >= ? AND idx.trial_end_date <= ?");
     expect(plan.sql).toContain("idx.pinned = ?");
     expect(plan.sql).toContain("idx.reminder_days >= 0");
     expect(plan.sql).toContain("instr(idx.search_text_lower, ?) > 0");
@@ -56,6 +57,8 @@ describe("subscription collection query plan", () => {
       JSON.stringify(["USD"]),
       JSON.stringify(["paypal"]),
       JSON.stringify([{ key: "äi", value: "ÄI" }]),
+      "2999-08-01",
+      "2999-08-31",
       "2999-08-01",
       "2999-08-31",
       1,

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readProductSession, writeProductSession } from "@/services/product-session";
+import { appQueryClient } from "@/lib/app-query-client";
 import type { SessionData } from "./auth-client";
 import { authClient, initializeProductSessionQuery } from "./auth-client";
 
@@ -11,8 +12,7 @@ type FetchMock = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn<FetchMock>(),
-  authStoreOnChange: vi.fn(),
-  authStoreClear: vi.fn(),
+  loadPasswordReset: vi.fn(),
   authenticatePasskey: vi.fn(),
   cancelActivePasskeyCeremony: vi.fn(),
 }));
@@ -22,18 +22,10 @@ vi.mock("@/services/runtime", () => ({
   isCloudflareRuntime: true,
 }));
 
-vi.mock("@/lib/pocketbase", () => ({
-  pb: {
-    authStore: {
-      isValid: false,
-      record: null,
-      token: "",
-      onChange: mocks.authStoreOnChange,
-      clear: mocks.authStoreClear,
-    },
-    collection: vi.fn(),
-  },
-}));
+vi.mock("@/services/password-reset-service", () => {
+  mocks.loadPasswordReset();
+  throw new Error("Cloudflare cannot load the PocketBase password reset adapter");
+});
 
 vi.mock("@/services/passkey-service", () => ({
   passkeyService: {
@@ -127,11 +119,17 @@ describe("authClient.useSession", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", mocks.fetch);
     mocks.fetch.mockReset();
-    mocks.authStoreOnChange.mockReset();
-    mocks.authStoreClear.mockReset();
+    mocks.loadPasswordReset.mockReset();
     mocks.authenticatePasskey.mockReset().mockResolvedValue({ status: "authenticated", session: sessionFixture });
     mocks.cancelActivePasskeyCeremony.mockReset();
     window.localStorage.clear();
+  });
+
+  it("rejects native password reset without loading the Docker adapter", async () => {
+    await expect(authClient.requestPasswordReset("alice@example.com")).rejects.toThrow("Email password reset is not enabled");
+    await expect(authClient.confirmPasswordReset("reset-token", "new-password")).rejects.toThrow("Email password reset is not enabled");
+    expect(mocks.loadPasswordReset).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it("deduplicates simultaneous Cloudflare session validation across consumers", async () => {
@@ -237,6 +235,19 @@ describe("authClient.useSession", () => {
 
     expect(mocks.cancelActivePasskeyCeremony).toHaveBeenCalledTimes(1);
     expect(readProductSession()).toBeNull();
+  });
+
+  it("cancels in-flight queries before revoking the session on sign out", async () => {
+    const cancelQueries = vi.spyOn(appQueryClient, "cancelQueries").mockResolvedValue();
+    mocks.fetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, data: null }), { status: 200 }));
+    writeProductSession(sessionFixture);
+
+    await authClient.signOut();
+
+    expect(cancelQueries).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledWith("/api/app/auth/logout", expect.objectContaining({ method: "POST" }));
+    expect(readProductSession()).toBeNull();
+    cancelQueries.mockRestore();
   });
 
   it("allows stale MFA verification sessions to be ignored before persistence", async () => {

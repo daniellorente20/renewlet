@@ -160,14 +160,24 @@ export function publicStatusSubscriptionQueryPlan(
   userId: string,
   today: string,
   limit: number,
+  options: { hideExpired?: boolean; hideLifetime?: boolean } = {},
 ): SubscriptionSqlQueryPlan {
+  const filters: string[] = ["idx.user_id = ?", "idx.public_hidden = 0"];
+  const params: unknown[] = [today, userId];
+  if (options.hideExpired) {
+    filters.push("NOT (idx.status = 'expired' OR (idx.status IN ('active', 'trial') AND idx.next_billing_date < ?))");
+    params.push(today);
+  }
+  if (options.hideLifetime) {
+    filters.push("NOT (idx.billing_cycle = 'one-time' AND COALESCE(idx.one_time_term_count, 0) <= 0)");
+  }
   return {
     sql: `
       WITH ranked AS (
         SELECT idx.subscription_id, idx.user_id, idx.pinned, idx.created_at,
           ${subscriptionInactiveRankSql("idx")} AS inactive
         FROM subscription_list_index AS idx
-        WHERE idx.user_id = ? AND idx.public_hidden = 0
+        WHERE ${filters.join(" AND ")}
       ), page AS MATERIALIZED (
         SELECT *
         FROM ranked AS idx
@@ -179,7 +189,7 @@ export function publicStatusSubscriptionQueryPlan(
       INNER JOIN subscriptions AS sub ON sub.user_id = idx.user_id AND sub.id = idx.subscription_id
       ORDER BY ${DEFAULT_SUBSCRIPTION_ORDER_SQL}
     `,
-    params: [today, userId, limit],
+    params: [...params, limit],
   };
 }
 
@@ -299,16 +309,19 @@ function subscriptionListBaseQuery(
   appendPaymentTypeCondition(conditions, query.paymentType);
   appendTagCondition(conditions, params, query.tag);
   if (query.nextBillingFrom || query.nextBillingTo) {
-    // D1 用 NULL 表示长期买断服务期；日期范围只描述真实续费/到期事件，固定服务期仍正常参与。
+    // D1 用 NULL 表示长期买断服务期；日期范围覆盖续费日和试用结束日，固定服务期仍正常参与。
     conditions.push("NOT (idx.billing_cycle = 'one-time' AND COALESCE(idx.one_time_term_count, 0) <= 0)");
   }
-  if (query.nextBillingFrom) {
-    conditions.push("idx.next_billing_date >= ?");
-    params.push(query.nextBillingFrom);
-  }
-  if (query.nextBillingTo) {
-    conditions.push("idx.next_billing_date <= ?");
-    params.push(query.nextBillingTo);
+  if (query.nextBillingFrom && query.nextBillingTo) {
+    // 日历按客户可见的下一事件取数；试用结束日可能早于 next_billing_date，不能只筛后者。
+    conditions.push("((idx.next_billing_date >= ? AND idx.next_billing_date <= ?) OR (idx.status = 'trial' AND idx.trial_end_date >= ? AND idx.trial_end_date <= ?))");
+    params.push(query.nextBillingFrom, query.nextBillingTo, query.nextBillingFrom, query.nextBillingTo);
+  } else if (query.nextBillingFrom) {
+    conditions.push("(idx.next_billing_date >= ? OR (idx.status = 'trial' AND idx.trial_end_date >= ?))");
+    params.push(query.nextBillingFrom, query.nextBillingFrom);
+  } else if (query.nextBillingTo) {
+    conditions.push("(idx.next_billing_date <= ? OR (idx.status = 'trial' AND idx.trial_end_date <= ?))");
+    params.push(query.nextBillingTo, query.nextBillingTo);
   }
   if (query.pinned !== undefined) {
     conditions.push("idx.pinned = ?");

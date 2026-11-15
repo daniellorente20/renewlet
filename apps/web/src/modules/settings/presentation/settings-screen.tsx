@@ -16,7 +16,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useLunarCalendar } from "@/contexts/CustomConfigContext";
 import { isLocalePreference } from "@renewlet/shared/i18n-config";
 import { cn } from "@/lib/utils";
 import { useSettingsFormController } from "../application/use-settings-form-controller";
@@ -41,9 +43,10 @@ import {
 } from "./settings-layout";
 import { CheckboxSettingRow, LoadingButtonContent } from "./settings-shared-controls";
 
-/** 设置页同步层只保留首屏区块、目录和统一保存状态；低频高级区块按滚动/导航 intent 装载。 */
+/** 设置页首屏先提交目录和保存状态，高级分组随后由独立 chunk 自动挂载；目录 intent 只提前预取代码。 */
 export function SettingsScreen() {
   const { t, previewLocalePreference } = useI18n();
+  const lunarCalendar = useLunarCalendar();
   const controller = useSettingsFormController();
   const {
     settings,
@@ -65,6 +68,10 @@ export function SettingsScreen() {
     passwordResetEnabled,
     sensitiveAccountActionsDisabled,
     sensitiveAccountActionsDemoDisabled,
+    appStatusHasError,
+    appStatusHasData,
+    appStatusIsRefreshing,
+    retryAppStatus,
   } = controller;
   const {
     passwordDialogOpen,
@@ -98,7 +105,7 @@ export function SettingsScreen() {
     previewLocalePreference(value);
   };
   const handleSectionIntent = (id: Parameters<typeof handleSectionClick>[0]) => {
-    if (isAdvancedSettingsSection(id)) preloadSettingsAdvancedSections();
+    if (isAdvancedSettingsSection(id)) preloadSettingsAdvancedSections(id);
   };
 
   return (
@@ -131,6 +138,17 @@ export function SettingsScreen() {
                 <h1 className="text-2xl font-bold text-foreground">{t("settings.title")}</h1>
                 <p className="mt-1 text-sm text-muted-foreground">{t("settings.subtitle")}</p>
               </div>
+
+              {appStatusHasError ? (
+                <div className="flex flex-col gap-2 border border-destructive/30 bg-destructive/10 p-3 sm:flex-row sm:items-center sm:justify-between" role="alert">
+                  <span className="text-sm text-destructive">
+                    {appStatusHasData ? t("settings.managerRefreshFailed") : t("settings.managerLoadFailed")}
+                  </span>
+                  <Button type="button" variant="outline" size="sm" className="h-11 border-border" onClick={() => void retryAppStatus()} disabled={appStatusIsRefreshing} aria-busy={appStatusIsRefreshing ? true : undefined}>
+                    {t("settings.managerRetry")}
+                  </Button>
+                </div>
+              ) : null}
 
               <AccountSettingsSection
                 id="settings-account"
@@ -188,6 +206,7 @@ export function SettingsScreen() {
                         <SelectItem value="auto">{t("locale.auto")}</SelectItem>
                         <SelectItem value="zh-CN">{t("locale.zhCN")}</SelectItem>
                         <SelectItem value="en-US">{t("locale.enUS")}</SelectItem>
+                        <SelectItem value="ru-RU">{t("locale.ruRU")}</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">{t("settings.languageHelp")}</p>
@@ -199,12 +218,30 @@ export function SettingsScreen() {
                     label={t("settings.showExpired")}
                     description={t("settings.showExpiredHelp")}
                   />
+                  <div className="flex flex-col gap-2 rounded-lg border border-border bg-secondary/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <Label htmlFor="showLunarCalendar" className="text-base font-medium">
+                        {t("settings.showLunarCalendar")}
+                      </Label>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {lunarCalendar.supported
+                          ? t("settings.showLunarCalendarHelp")
+                          : t("settings.showLunarCalendarUnsupported")}
+                      </p>
+                    </div>
+                    <Switch
+                      id="showLunarCalendar"
+                      checked={settings.showLunarCalendar}
+                      disabled={!lunarCalendar.supported}
+                      onCheckedChange={(checked) => updateSetting("showLunarCalendar", checked)}
+                      aria-label={t("settings.showLunarCalendar")}
+                    />
+                  </div>
                 </div>
               </section>
 
               <DeferredSettingsAdvancedSections
                 controller={controller}
-                activeSectionId={activeSectionId}
                 onReady={markDeferredSectionsReady}
               />
             </div>

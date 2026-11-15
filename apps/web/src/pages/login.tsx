@@ -30,7 +30,7 @@ import { sanitizeNextPath } from '@/lib/redirect';
 import { reportClientError } from "@/lib/report-client-error";
 import { useTheme } from "@/lib/theme-provider";
 import { usePasswordResetAvailability } from '@/hooks/use-password-reset-availability';
-import { useSetupStatus } from '@/hooks/use-setup-status';
+import { useAppStatus } from '@/hooks/use-app-status';
 import { useRouteReady } from '@/components/route-progress';
 import { useI18n } from '@/i18n/I18nProvider';
 import { LoginMfaDialog, type LoginMfaErrors, type LoginMfaState } from "@/pages/login-mfa-dialog";
@@ -90,13 +90,16 @@ const Login = () => {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaErrors, setMfaErrors] = useState<LoginMfaErrors>({});
   const passwordResetEnabled = usePasswordResetAvailability();
-  const setupStatus = useSetupStatus();
+  const setupStatus = useAppStatus();
   useRouteReady(setupStatus.isLoading);
   const { t } = useI18n();
   const { resolvedTheme } = useTheme();
-  const showSetupPrompt = setupStatus.setupRequired && setupStatus.setupEnabled;
+  const appStatusData = setupStatus.status === "ready" ? setupStatus.data : null;
+  const showSetupPrompt = appStatusData?.setupRequired === true && appStatusData?.setupEnabled === true;
   // /api/app/status 是登录页唯一的 Turnstile siteKey 来源；配置不完整时后端会收敛成 enabled=false。
-  const turnstileRequired = setupStatus.turnstile.enabled && setupStatus.turnstile.siteKey.trim().length > 0;
+  const turnstileRequired = appStatusData?.turnstile.enabled === true && appStatusData.turnstile.siteKey.trim().length > 0;
+  const turnstileSiteKey = appStatusData?.turnstile.siteKey ?? "";
+  const passwordLoginReady = setupStatus.status === "ready";
   const isBusy = isLoading || isPasskeyLoading;
 
   const invalidatePasskeyFlows = useCallback(() => {
@@ -271,6 +274,8 @@ const Login = () => {
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // 密码登录依赖 status 提供的 Turnstile 能力；状态未知时等待用户重试，Passkey 仍走独立协议。
+    if (!passwordLoginReady) return;
     const { nextErrors, trimmedEmail } = validate();
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -451,6 +456,14 @@ const Login = () => {
           </div>
 
           <div className="grid gap-6">
+            {setupStatus.status === "error" ? (
+              <div className="rounded-md border border-border bg-secondary p-3 text-sm text-muted-foreground" role="alert">
+                <p>{t("error.loginUnavailable")}</p>
+                <Button type="button" variant="link" className="h-auto p-0" onClick={() => void setupStatus.retry()} disabled={setupStatus.isRefreshing}>
+                  {t("system.retry")}
+                </Button>
+              </div>
+            ) : null}
             <form onSubmit={handleLogin} className="grid gap-4" noValidate>
               <FormField id="login-email" label={t("auth.email")} error={errors.email}>
                 {(field) => (
@@ -550,7 +563,7 @@ const Login = () => {
               {turnstileRequired ? (
                 <div ref={turnstileFieldRef}>
                   <TurnstileWidget
-                    siteKey={setupStatus.turnstile.siteKey}
+                    siteKey={turnstileSiteKey}
                     theme={resolvedTheme}
                     errorId="login-turnstile-error"
                     resetSignal={turnstileResetSignal}
@@ -564,7 +577,7 @@ const Login = () => {
                 <Button
                   type="submit"
                   className="w-full bg-primary text-primary-foreground hover:bg-primary-glow"
-                  disabled={isBusy}
+                  disabled={isBusy || !passwordLoginReady}
                 >
                   {isLoading ? t("auth.loggingIn") : t("auth.login")}
                   <ArrowRight className="ml-2 h-4 w-4" />

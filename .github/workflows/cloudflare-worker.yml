@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  # 同一仓库的 D1 migration/backfill/deploy 是一个不可中断序列；新 push 只能排队，不能取消正在写库的 run。
-  group: cloudflare-worker-${{ github.repository }}
+  # dev 与稳定 tag 可能共用同一远端 D1；migration/backfill/deploy 必须跨 workflow 串行，不能取消正在写库的 run。
+  group: production-cloudflare-${{ github.repository }}
   cancel-in-progress: false
 
 env:

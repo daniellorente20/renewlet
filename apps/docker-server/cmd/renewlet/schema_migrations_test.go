@@ -111,6 +111,10 @@ func TestEnsureSchemaUpgradesHistoricalPaymentTypesAndRebuildsDerivedState(t *te
 		"oneTimeTermCount": 6, "oneTimeTermUnit": "month", "autoRenew": false, "autoCalculateNextBillingDate": false,
 		"startDate": "2026-02-15", "nextBillingDate": "2026-08-15",
 	})
+	trial := createSchemaTestSubscriptionNoValidate(t, app, user.Id, map[string]interface{}{
+		"name": "Historical Trial", "price": "24", "status": "trial", "autoRenew": true,
+		"startDate": "2026-07-01", "nextBillingDate": "2026-12-01", "trialEndDate": "2026-08-20",
+	})
 
 	type factSnapshot struct {
 		ID               string `db:"id"`
@@ -188,7 +192,7 @@ func TestEnsureSchemaUpgradesHistoricalPaymentTypesAndRebuildsDerivedState(t *te
 			}
 		}
 	}
-	assertFiltered(subscriptionListQuery{PaymentType: "auto"}, auto.Id)
+	assertFiltered(subscriptionListQuery{PaymentType: "auto"}, auto.Id, trial.Id)
 	assertFiltered(subscriptionListQuery{PaymentType: "manual"}, manual.Id)
 	assertFiltered(subscriptionListQuery{PaymentType: "one-time-buyout"}, buyout.Id)
 	assertFiltered(subscriptionListQuery{PaymentType: "one-time-fixed-term"}, fixed.Id)
@@ -196,7 +200,7 @@ func TestEnsureSchemaUpgradesHistoricalPaymentTypesAndRebuildsDerivedState(t *te
 		BillingCycles: []string{"one-time"}, PaymentType: "one-time-fixed-term",
 		NextBillingFrom: "2026-08-01", NextBillingTo: "2026-08-31",
 	}, fixed.Id)
-	assertFiltered(subscriptionListQuery{NextBillingFrom: "2026-08-01", NextBillingTo: "2026-08-31"}, auto.Id, manual.Id, fixed.Id)
+	assertFiltered(subscriptionListQuery{NextBillingFrom: "2026-08-01", NextBillingTo: "2026-08-31"}, auto.Id, manual.Id, fixed.Id, trial.Id)
 
 	type projectionSnapshot struct {
 		SubscriptionID   string `db:"subscription_id"`
@@ -216,8 +220,8 @@ func TestEnsureSchemaUpgradesHistoricalPaymentTypesAndRebuildsDerivedState(t *te
 		return rows
 	}
 	firstProjection := readProjection()
-	if len(firstProjection) != 4 {
-		t.Fatalf("rebuilt projection rows=%#v, want four facts and no stale row", firstProjection)
+	if len(firstProjection) != 5 {
+		t.Fatalf("rebuilt projection rows=%#v, want five facts and no stale row", firstProjection)
 	}
 	if applied, err := schemaDataMigrationApplied(app, "subscription_cycle_fields_v1"); err != nil || !applied {
 		t.Fatalf("cycle migration marker applied=%v err=%v, want true nil", applied, err)
@@ -314,6 +318,101 @@ func TestSchemaDataMigrationsBackfillSchedulerWithoutListProjection(t *testing.T
 	}
 	if projection.Count != 1 {
 		t.Fatalf("list projection count after lazy refresh = %d, want 1", projection.Count)
+	}
+}
+
+func TestCancelledNotificationSemanticsMigrationRebuildsRepeatDerivedState(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureCollectionsSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	user := createSchemaTestUser(t, app, "schema-cancelled-notification@example.com")
+	subscription := createSchemaTestSubscriptionNoValidate(t, app, user.Id, map[string]interface{}{
+		"name":                  "Cancelled Repeat",
+		"status":                "cancelled",
+		"repeatReminderEnabled": true,
+		"nextBillingDate":       "2026-08-27",
+	})
+	if err := runSchemaDataMigrations(app); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`INSERT INTO subscription_repeat_schedule (user_id, subscription_id, next_due_at_utc)
+		VALUES ({:user}, {:subscription}, '2026-08-24T12:00:00Z')`).Bind(dbx.Params{
+		"user": user.Id, "subscription": subscription.Id,
+	}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`UPDATE subscription_scheduler_states
+		SET repeatReminderCount = 1, nextRepeatNotificationDueAtUTC = '2026-08-24T12:00:00Z'
+		WHERE user = {:user}`).Bind(dbx.Params{"user": user.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`DELETE FROM ` + schemaDataMigrationsTable + `
+		WHERE name = {:name}`).Bind(dbx.Params{"name": subscriptionCancelledNotificationSemanticsMigrationName}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runSchemaDataMigrations(app); err != nil {
+		t.Fatal(err)
+	}
+	var scheduleRow struct {
+		Count int `db:"count"`
+	}
+	if err := app.DB().NewQuery(`SELECT COUNT(*) AS count FROM subscription_repeat_schedule
+		WHERE user_id = {:user}`).Bind(dbx.Params{"user": user.Id}).One(&scheduleRow); err != nil {
+		t.Fatal(err)
+	}
+	if scheduleRow.Count != 0 {
+		t.Fatalf("cancelled repeat schedule count = %d, want 0", scheduleRow.Count)
+	}
+	var repeatRow struct {
+		Count int `db:"repeatReminderCount"`
+	}
+	if err := app.DB().NewQuery(`SELECT repeatReminderCount FROM subscription_scheduler_states
+		WHERE user = {:user}`).Bind(dbx.Params{"user": user.Id}).One(&repeatRow); err != nil {
+		t.Fatal(err)
+	}
+	if repeatRow.Count != 0 {
+		t.Fatalf("cancelled repeat aggregate count = %d, want 0", repeatRow.Count)
+	}
+	reloaded, err := app.FindRecordById("subscriptions", subscription.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.GetBool("repeatReminderEnabled") {
+		t.Fatal("migration changed the user's repeat reminder setting")
+	}
+}
+
+func TestCancelledNotificationSemanticsMigrationSkipsCleanUsers(t *testing.T) {
+	app := newSchemaTestApp(t)
+	if err := ensureCollectionsSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	user := createSchemaTestUser(t, app, "schema-cancelled-notification-clean@example.com")
+	createSchemaTestSubscriptionNoValidate(t, app, user.Id, map[string]interface{}{
+		"name":                  "Active Repeat",
+		"status":                "active",
+		"repeatReminderEnabled": true,
+		"nextBillingDate":       "2026-08-27",
+	})
+	if err := runSchemaDataMigrations(app); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.DB().NewQuery(`DELETE FROM ` + schemaDataMigrationsTable + `
+		WHERE name = {:name}`).Bind(dbx.Params{"name": subscriptionCancelledNotificationSemanticsMigrationName}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	operations, err := measureSubscriptionDBOperations(app, func() error {
+		return runSchemaDataMigrations(app)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 已经由旧 scheduler migration 收敛且没有 cancelled 漂移时，只写本次迁移账本，不能再次重建派生表。
+	if operations.DerivedWrites != 0 {
+		t.Fatalf("clean cancelled semantics migration rewrote derived state: %+v", operations)
 	}
 }
 

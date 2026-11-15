@@ -91,6 +91,72 @@ func TestExternalRequestOriginFallsBackWhenForwardedHostIsInvalid(t *testing.T) 
 	}
 }
 
+func TestRequireSameOriginRequestUsesBrowserFetchSiteBehindFNOSProxy(t *testing.T) {
+	tests := []struct {
+		name      string
+		fetchSite string
+		origin    string
+		wantOK    bool
+	}{
+		{name: "fnOS browser same origin", fetchSite: "same-origin", origin: "https://office.app.5ddd.com:41381", wantOK: true},
+		{name: "cross site", fetchSite: "cross-site", origin: "https://attacker.example"},
+		{name: "same site other origin", fetchSite: "same-site", origin: "https://other.example.fnos.net"},
+		{name: "direct navigation", fetchSite: "none", origin: "https://watchcow-renewlet-web-1.example.fnos.net"},
+		{name: "missing fetch site with matching origin", origin: "https://watchcow-renewlet-web-1.example.fnos.net", wantOK: true},
+		{name: "missing fetch site with fnOS origin", origin: "https://office.app.5ddd.com:41381"},
+		{name: "missing source origin"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodPost, "http://watchcow-renewlet-web-1.example.fnos.net/api/app/auth/login", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("X-Forwarded-Proto", "https")
+			request.Header.Set("X-Forwarded-Host", "watchcow-renewlet-web-1.example.fnos.net")
+			if tt.fetchSite != "" {
+				request.Header.Set("Sec-Fetch-Site", tt.fetchSite)
+			}
+			if tt.origin != "" {
+				request.Header.Set("Origin", tt.origin)
+			}
+			if err := requireSameOriginRequest(request); (err == nil) != tt.wantOK {
+				t.Fatalf("requireSameOriginRequest() error = %v, wantOK = %t", err, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestRequireSameOriginRequestRejectsMissingOrMismatchedOrigin(t *testing.T) {
+	tests := []struct {
+		name    string
+		origin  string
+		referer string
+	}{
+		{name: "missing", origin: "", referer: ""},
+		{name: "origin mismatch", origin: "https://attacker.example", referer: ""},
+		{name: "referer mismatch", origin: "", referer: "https://attacker.example/login"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:3000/api/app/auth/login", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("Forwarded", `proto=https;host=fnos.example`)
+			if tt.origin != "" {
+				request.Header.Set("Origin", tt.origin)
+			}
+			if tt.referer != "" {
+				request.Header.Set("Referer", tt.referer)
+			}
+			if err := requireSameOriginRequest(request); err == nil {
+				t.Fatal("requireSameOriginRequest() accepted an invalid request origin")
+			}
+		})
+	}
+}
+
 func TestStaticCacheControlSplitsAssetsFromHTMLFallback(t *testing.T) {
 	fsys := fstest.MapFS{
 		"index.html":                   {Data: []byte("<!doctype html>")},
@@ -102,9 +168,10 @@ func TestStaticCacheControlSplitsAssetsFromHTMLFallback(t *testing.T) {
 		want string
 	}{
 		{path: "/assets/app.abc123.js", want: "public, max-age=31536000, immutable"},
-		{path: "/assets/missing.js", want: "no-cache"},
-		{path: "/settings", want: "no-cache"},
-		{path: "/index.html", want: "no-cache"},
+		{path: "/assets/missing.js", want: "no-store"},
+		{path: "/", want: "no-store"},
+		{path: "/settings", want: "no-store"},
+		{path: "/index.html", want: "no-store"},
 		{path: "/renewlet-client-bootstrap.js", want: "no-cache"},
 	}
 
@@ -158,7 +225,7 @@ func TestStaticFallbackSharesMuxWithProductAPIFallbacks(t *testing.T) {
 		if got := spa.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 			t.Fatalf("expected static security headers for %s, got X-Content-Type-Options=%q", target, got)
 		}
-		if got := spa.Header().Get("Cache-Control"); got != "no-cache" {
+		if got := spa.Header().Get("Cache-Control"); got != "no-store" {
 			t.Fatalf("expected SPA fallback cache policy for %s, got Cache-Control=%q", target, got)
 		}
 	}

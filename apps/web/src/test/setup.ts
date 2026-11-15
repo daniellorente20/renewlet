@@ -2,6 +2,11 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { activateLoadedLocale, loadLocaleCatalog } from "@/i18n/messages";
+import { createFetchGuard } from "./fetch-guard";
+
+const fetchGuard = createFetchGuard();
+// 默认禁止单测访问外网；局部 stub/spy 还原后也必须回到守卫，不能恢复真实 fetch。
+globalThis.fetch = fetchGuard.fetch;
 
 const [zhCNMessages] = await Promise.all([
   loadLocaleCatalog("zh-CN"),
@@ -97,12 +102,16 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(rejectUnexpectedConsoleCall("error"));
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Radix FocusScope卸载后用零延时timer恢复焦点；必须在当前jsdom和断言环境仍存活时完成，不能丢弃或带入下一用例。
+  if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
   vi.useRealTimers();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   vi.clearAllMocks();
   installStorage("localStorage");
   installStorage("sessionStorage");
   localStorage.clear();
   sessionStorage.clear();
+  fetchGuard.assertNoRequests();
 });

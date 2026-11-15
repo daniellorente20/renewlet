@@ -23,11 +23,13 @@ import {
   useCreateSubscription,
   useDeleteSubscription,
   usePatchSubscription,
+  useRenewSubscription,
   useSubscriptionCalendar,
   useSubscriptionIndex,
   useUpdateSubscription,
 } from "./use-subscriptions";
 import { subscriptionQueryKeys } from "./subscription-query-cache";
+import { notificationQueryKeys } from "./notification-query-cache";
 
 type RecurringSubscriptionDraft = Extract<
   SubscriptionDraft,
@@ -38,29 +40,29 @@ type ApiFetchMock = (url: string, schema: unknown, init?: RequestInit) => Promis
 
 const mocks = vi.hoisted(() => ({
   apiFetch: vi.fn<ApiFetchMock>(),
-  getCurrentUserId: vi.fn<() => string | null>(),
+  getProductCurrentUserId: vi.fn<() => string | null>(),
+  readProductSessionSnapshot: vi.fn<() => { userId: string; expiresAt: string; verifiedAt: number } | null>(),
 }));
 
-vi.mock("@/lib/api-client", () => ({
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/api-client")>(),
   apiFetch: mocks.apiFetch,
 }));
 
-vi.mock("@/lib/pocketbase", () => ({
-  pb: {
-    lang: "zh-CN",
-    beforeSend: undefined,
-  },
-  getCurrentUserId: mocks.getCurrentUserId,
+vi.mock("@/services/product-session", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/services/product-session")>(),
+  getProductCurrentUserId: mocks.getProductCurrentUserId,
+  readProductSessionSnapshot: mocks.readProductSessionSnapshot,
 }));
 
-function createWrapper() {
-  const queryClient = new QueryClient({
+function createWrapper(
+  queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
-  });
-
+  }),
+) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
@@ -173,9 +175,10 @@ function requestBody(callIndex: number): unknown {
 
 describe("use-subscriptions mutations", () => {
   beforeEach(() => {
+    mocks.readProductSessionSnapshot.mockReturnValue({ userId: "user-1", expiresAt: "2027-01-01T00:00:00Z", verifiedAt: 1 });
     mocks.apiFetch.mockReset();
-    mocks.getCurrentUserId.mockReset();
-    mocks.getCurrentUserId.mockReturnValue("user-1");
+    mocks.getProductCurrentUserId.mockReset();
+    mocks.getProductCurrentUserId.mockReturnValue("user-1");
     mocks.apiFetch.mockImplementation(async (url: string, _schema: unknown, init?: RequestInit) => {
       const id = url.includes("/sub-1") ? "sub-1" : "sub-1";
       if (!init?.body) {
@@ -187,7 +190,11 @@ describe("use-subscriptions mutations", () => {
   });
 
   it("keeps tags as an empty array when creating a subscription through the product API", async () => {
-    const { result } = renderHook(() => useCreateSubscription(), { wrapper: createWrapper() });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCreateSubscription(), { wrapper: createWrapper(queryClient) });
     const draft = subscriptionDraft({ tags: [] });
 
     await act(async () => {
@@ -207,6 +214,7 @@ describe("use-subscriptions mutations", () => {
     });
     expect(payload).not.toHaveProperty("user");
     expect(payload).not.toHaveProperty("trialEndDate");
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
   });
 
   it("sends nullable start dates for manual recurring creates", async () => {
@@ -252,6 +260,63 @@ describe("use-subscriptions mutations", () => {
     expect(payload).not.toHaveProperty("trialEndDate");
   });
 
+  it("invalidates notification overview after renewal", async () => {
+    mocks.apiFetch.mockResolvedValueOnce({
+      subscription: apiSubscriptionFromDraft("sub-1", subscriptionDraft({ nextBillingDate: assertDateOnly("2026-07-14") })),
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useRenewSubscription(), { wrapper: createWrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: "sub-1",
+        payload: {
+          mode: "continue",
+          expectedNextBillingDate: "2026-06-14",
+          expectedUpdatedAt: "2026-01-01T00:00:00.000Z",
+          price: "15",
+          currency: "USD",
+          startDate: null,
+          nextBillingDate: assertDateOnly("2026-07-14"),
+          autoCalculateNextBillingDate: true,
+        },
+      });
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
+  });
+
+  it.each(["logout", "switch", "verify"])("isolates late renewal results across %s", async (change) => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    let release!: (value: unknown) => void;
+    mocks.apiFetch.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const { result } = renderHook(() => useRenewSubscription(), { wrapper: createWrapper(queryClient) });
+    let outcome: unknown;
+    await act(async () => {
+      const pending = result.current.mutateAsync({ id: "sub-1", payload: {
+        mode: "continue", expectedNextBillingDate: "2026-06-14", expectedUpdatedAt: "2026-01-01T00:00:00Z",
+        price: "15", currency: "USD", startDate: null, nextBillingDate: "2026-07-14", autoCalculateNextBillingDate: false,
+      } }).then(() => "saved", (error: unknown) => error);
+      await Promise.resolve();
+      mocks.readProductSessionSnapshot.mockReturnValue(change === "logout" ? null : {
+        userId: change === "switch" ? "user-2" : "user-1", expiresAt: "2027-01-01T00:00:00Z", verifiedAt: 2,
+      });
+      release({ subscription: apiSubscriptionFromDraft("sub-1", subscriptionDraft()) });
+      outcome = await pending;
+    });
+    if (change === "verify") {
+      expect(outcome).toBe("saved");
+      expect(queryClient.getQueryData(subscriptionQueryKeys.detail("sub-1"))).toBeDefined();
+    } else {
+      expect(outcome).toMatchObject({ code: "aborted" });
+      expect(queryClient.getQueryData(subscriptionQueryKeys.detail("sub-1"))).toBeUndefined();
+    }
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("sends only quick-action fields through the patch mutation", async () => {
     mocks.apiFetch.mockResolvedValueOnce({
       subscription: apiSubscriptionFromDraft("sub-1", subscriptionDraft({ pinned: true })),
@@ -271,8 +336,8 @@ describe("use-subscriptions mutations", () => {
     expect(payload).not.toHaveProperty("nextBillingDate");
   });
 
-  it("writes mutation results to detail cache and invalidates only collection derivations", async () => {
-    const updated = apiSubscriptionFromDraft("sub-1", subscriptionDraft({ name: "Updated" }));
+  it("writes mutation results and invalidates notification overview for full edits", async () => {
+    const updated = apiSubscriptionFromDraft("sub-1", subscriptionDraft({ name: "Updated", status: "cancelled" }));
     mocks.apiFetch.mockResolvedValueOnce({ subscription: updated });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -282,7 +347,7 @@ describe("use-subscriptions mutations", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const { result } = renderHook(() => useUpdateSubscription(), { wrapper });
-    const updatedDraft = subscriptionDraft({ name: "Updated" });
+    const updatedDraft = subscriptionDraft({ name: "Updated", status: "cancelled" });
     const updatedSubscription = subscriptionFromDraft("sub-1", updatedDraft);
 
     await act(async () => {
@@ -294,7 +359,29 @@ describe("use-subscriptions mutations", () => {
 
     expect(queryClient.getQueryData<Subscription>(subscriptionQueryKeys.detail("sub-1"))?.name).toBe("Updated");
     expect(invalidate).toHaveBeenCalledWith({ queryKey: subscriptionQueryKeys.collections });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: subscriptionQueryKeys.details });
+  });
+
+  it("does not invalidate notification overview for display-only patches", async () => {
+    mocks.apiFetch.mockResolvedValueOnce({
+      subscription: apiSubscriptionFromDraft("sub-1", subscriptionDraft({ pinned: true })),
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => usePatchSubscription(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: "sub-1", patch: { pinned: true } });
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: subscriptionQueryKeys.collections });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
   });
 
   it("removes a deleted detail cache entry before invalidating collections", async () => {
@@ -302,6 +389,7 @@ describe("use-subscriptions mutations", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
     queryClient.setQueryData(
       subscriptionQueryKeys.detail("sub-1"),
       subscriptionFromDraft("sub-1", subscriptionDraft()),
@@ -316,14 +404,17 @@ describe("use-subscriptions mutations", () => {
     });
 
     expect(queryClient.getQueryData(subscriptionQueryKeys.detail("sub-1"))).toBeUndefined();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: subscriptionQueryKeys.collections });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: notificationQueryKeys.overview });
   });
 });
 
 describe("use-subscriptions collection queries", () => {
   beforeEach(() => {
+    mocks.readProductSessionSnapshot.mockReturnValue({ userId: "user-1", expiresAt: "2027-01-01T00:00:00Z", verifiedAt: 1 });
     mocks.apiFetch.mockReset();
-    mocks.getCurrentUserId.mockReset();
-    mocks.getCurrentUserId.mockReturnValue("user-1");
+    mocks.getProductCurrentUserId.mockReset();
+    mocks.getProductCurrentUserId.mockReturnValue("user-1");
   });
 
   it("loads a 1000-row search index with one request and no pagination waterfall", async () => {
